@@ -1,10 +1,8 @@
 // lib/features/workout/presentation/active_workout_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:drift/drift.dart' hide Column;
-import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
-
+import 'package:drift/drift.dart' show Value;
 import '../../../core/database/app_database.dart';
 import '../../../core/database/database_provider.dart';
 import '../../../core/theme/app_colors.dart';
@@ -23,16 +21,14 @@ class ActiveWorkoutScreen extends ConsumerStatefulWidget {
 
 class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
   late int _workoutId;
+  final _startTime = DateTime.now();
   bool _isLoading = true;
-  final DateTime _startTime = DateTime.now();
-
-  // Controllers
-  final Map<int, TextEditingController> _weightControllers = {};
-  final Map<int, TextEditingController> _repsControllers = {};
-
-  // Rest Timer State
   int? _activeRestSetId;
   int _restSecondsRemaining = 0;
+  
+  // Keep text controllers alive to prevent focus loss
+  final Map<int, TextEditingController> _weightControllers = {};
+  final Map<int, TextEditingController> _repsControllers = {};
 
   @override
   void initState() {
@@ -42,6 +38,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
 
   @override
   void dispose() {
+    // Clean up controllers
     for (final controller in _weightControllers.values) {
       controller.dispose();
     }
@@ -153,11 +150,10 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
                   );
                 }
 
-                // Group by supersetId or exerciseId
-                final groups = <String, List<WorkoutSet>>{};
+                // Group by exercise
+                final exerciseGroups = <String, List<WorkoutSet>>{};
                 for (final set in sets) {
-                  final key = set.supersetId ?? set.exerciseId.toString();
-                  groups.putIfAbsent(key, () => []).add(set);
+                  exerciseGroups.putIfAbsent(set.exerciseName, () => []).add(set);
                 }
 
                 // Calculate total volume
@@ -190,19 +186,15 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
                       ),
                     ),
 
-                    // Exercise/Superset Cards
+                    // Exercise Cards
                     Expanded(
                       child: ListView.builder(
                         padding: const EdgeInsets.only(bottom: 100),
-                        itemCount: groups.length,
+                        itemCount: exerciseGroups.length,
                         itemBuilder: (context, index) {
-                          final key = groups.keys.elementAt(index);
-                          final groupSets = groups[key]!;
-                          final isSuperset = groupSets.first.supersetId != null;
-
-                          return isSuperset
-                              ? _buildSupersetCard(context, groupSets)
-                              : _buildExerciseCard(context, groupSets.first.exerciseName, groupSets);
+                          final exerciseName = exerciseGroups.keys.elementAt(index);
+                          final exerciseSets = exerciseGroups[exerciseName]!;
+                          return _buildExerciseCard(context, exerciseName, exerciseSets);
                         },
                       ),
                     ),
@@ -282,163 +274,48 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
                     style: theme.textTheme.titleMedium,
                   ),
                 ),
-                PopupMenuButton<String>(
-                  icon: const Icon(Icons.more_vert),
-                  onSelected: (value) {
-                    if (value == 'delete') {
-                      _deleteExercise(sets);
-                    } else if (value == 'superset') {
-                      _createSupersetFromCard(sets.first);
-                    }
-                  },
-                  itemBuilder: (context) => [
-                    const PopupMenuItem(
-                      value: 'superset',
-                      child: Text('Create Superset'),
-                    ),
-                    const PopupMenuItem(
-                      value: 'delete',
-                      child: Text('Remove Exercise', style: TextStyle(color: Colors.red)),
-                    ),
-                  ],
-                ),
                 IconButton(
                   icon: const Icon(Icons.add_circle_outline, size: 20),
                   onPressed: () => _addSet(sets.first),
                 ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, size: 20, color: AppColors.error),
+                  onPressed: () => _deleteExercise(sets),
+                ),
               ],
             ),
             const SizedBox(height: 4),
-            _buildSetsTable(context, sets),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSupersetCard(BuildContext context, List<WorkoutSet> sets) {
-    final theme = Theme.of(context);
-    final exercises = sets.map((s) => s.exerciseName).toSet().toList();
-
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      shape: RoundedRectangleBorder(
-        side: BorderSide(color: AppColors.warning.withOpacity(0.5), width: 2),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+            // Headers
             Row(
               children: [
-                Icon(Icons.link, color: AppColors.warning),
-                const SizedBox(width: 8),
+                SizedBox(
+                  width: 40,
+                  child: Text('SET', style: theme.textTheme.labelSmall),
+                ),
                 Expanded(
-                  child: Text(
-                    'SUPERSET',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      color: AppColors.warning,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  child: Text('PREVIOUS', style: theme.textTheme.labelSmall),
                 ),
-                PopupMenuButton<String>(
-                  icon: const Icon(Icons.more_vert),
-                  onSelected: (value) {
-                    if (value == 'delete') {
-                      _deleteExercise(sets);
-                    } else if (value == 'add_exercise') {
-                      _addExerciseToSuperset(sets.first.supersetId!);
-                    } else if (value == 'unlink') {
-                      _unlinkSuperset(sets);
-                    }
-                  },
-                  itemBuilder: (context) => [
-                    const PopupMenuItem(
-                      value: 'add_exercise',
-                      child: Text('Add Exercise'),
-                    ),
-                    const PopupMenuItem(
-                      value: 'unlink',
-                      child: Text('Unlink Superset'),
-                    ),
-                    const PopupMenuItem(
-                      value: 'delete',
-                      child: Text('Remove All', style: TextStyle(color: Colors.red)),
-                    ),
-                  ],
+                Expanded(
+                  child: Text('KG', style: theme.textTheme.labelSmall),
                 ),
+                Expanded(
+                  child: Text('REPS', style: theme.textTheme.labelSmall),
+                ),
+                const SizedBox(width: 48),
               ],
             ),
             const SizedBox(height: 8),
-            ...exercises.map((exName) {
-              final exSets = sets.where((s) => s.exerciseName == exName).toList();
-              final letter = String.fromCharCode(65 + exercises.indexOf(exName)); // A, B, C...
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(letter, style: const TextStyle(fontWeight: FontWeight.bold)),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(exName, style: theme.textTheme.titleSmall)),
-                      IconButton(
-                        icon: const Icon(Icons.add_circle_outline, size: 20),
-                        onPressed: () => _addSet(exSets.first),
-                      ),
-                    ],
-                  ),
-                  _buildSetsTable(context, exSets),
-                  const SizedBox(height: 16),
-                ],
-              );
-            }),
+            ...sets.map((set) => _buildSetRow(context, set, sets.indexOf(set) + 1)),
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildSetsTable(BuildContext context, List<WorkoutSet> sets) {
-    final theme = Theme.of(context);
-    return Column(
-      children: [
-        Row(
-          children: [
-            SizedBox(
-              width: 40,
-              child: Text('SET', style: theme.textTheme.labelSmall),
-            ),
-            Expanded(
-              child: Text('PREVIOUS', style: theme.textTheme.labelSmall),
-            ),
-            Expanded(
-              child: Text('KG', style: theme.textTheme.labelSmall),
-            ),
-            Expanded(
-              child: Text('REPS', style: theme.textTheme.labelSmall),
-            ),
-            const SizedBox(width: 48),
-          ],
-        ),
-        const SizedBox(height: 8),
-        ...sets.map((set) => _buildSetRow(context, set, sets.indexOf(set) + 1)),
-      ],
     );
   }
 
   Widget _buildSetRow(BuildContext context, WorkoutSet set, int setNumber) {
     final theme = Theme.of(context);
     
+    // Get or create persistent controllers for this set
     if (!_weightControllers.containsKey(set.id)) {
       _weightControllers[set.id] = TextEditingController(
         text: set.weight != null ? set.weight!.toStringAsFixed(1).replaceAll('.0', '') : '',
@@ -665,6 +542,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
       ),
     );
 
+    // Start rest timer if set is completed
     if (newCompleted && set.weight != null && set.reps != null) {
       setState(() {
         _activeRestSetId = set.id;
@@ -681,6 +559,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
         _startRestTimer();
       } else if (_restSecondsRemaining == 0) {
         setState(() => _activeRestSetId = null);
+        // TODO: Show notification
       }
     });
   }
@@ -707,68 +586,6 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
     }
   }
 
-  Future<void> _createSupersetFromCard(WorkoutSet sourceSet) async {
-    final exercise = await showModalBottomSheet<Exercise>(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => const ExercisePickerModal(),
-    );
-
-    if (exercise != null) {
-      final db = ref.read(databaseProvider);
-      final supersetId = const Uuid().v4();
-
-      // Update existing sets of this exercise to use the supersetId
-      await (db.update(db.workoutSets)
-            ..where((s) => s.workoutId.equals(_workoutId) & s.exerciseId.equals(sourceSet.exerciseId)))
-          .write(WorkoutSetsCompanion(supersetId: Value(supersetId)));
-
-      // Add the new exercise to the superset
-      await db.insertWorkoutSet(
-        WorkoutSetsCompanion.insert(
-          uuid: const Uuid().v4(),
-          workoutId: _workoutId,
-          exerciseId: exercise.id,
-          exerciseName: exercise.name,
-          setOrder: 0,
-          setType: const Value('normal'),
-          supersetId: Value(supersetId),
-        ),
-      );
-    }
-  }
-
-  Future<void> _addExerciseToSuperset(String supersetId) async {
-    final exercise = await showModalBottomSheet<Exercise>(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => const ExercisePickerModal(),
-    );
-
-    if (exercise != null) {
-      final db = ref.read(databaseProvider);
-      await db.insertWorkoutSet(
-        WorkoutSetsCompanion.insert(
-          uuid: const Uuid().v4(),
-          workoutId: _workoutId,
-          exerciseId: exercise.id,
-          exerciseName: exercise.name,
-          setOrder: 0,
-          setType: const Value('normal'),
-          supersetId: Value(supersetId),
-        ),
-      );
-    }
-  }
-
-  Future<void> _unlinkSuperset(List<WorkoutSet> sets) async {
-    final db = ref.read(databaseProvider);
-    for (final set in sets) {
-      await (db.update(db.workoutSets)..where((s) => s.id.equals(set.id)))
-          .write(const WorkoutSetsCompanion(supersetId: Value(null)));
-    }
-  }
-
   Future<void> _addSet(WorkoutSet templateSet) async {
     final db = ref.read(databaseProvider);
     final sets = await db.getSetsForWorkout(_workoutId);
@@ -785,7 +602,6 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
         weight: Value(templateSet.weight),
         reps: Value(templateSet.reps),
         setType: const Value('normal'),
-        supersetId: Value(templateSet.supersetId),
       ),
     );
   }
@@ -793,7 +609,11 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
   Future<String> _getPreviousPerformance(int exerciseId, int setOrder) async {
     try {
       final db = ref.read(databaseProvider);
+      
+      // Get all completed sets for this exercise from other workouts
       final allSets = await db.select(db.workoutSets).get();
+      
+      // Filter to get previous performance
       final previousSets = allSets.where((s) => 
         s.exerciseId == exerciseId &&
         s.workoutId != _workoutId &&
@@ -803,6 +623,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
         s.reps != null
       ).toList();
       
+      // Sort by completed date descending
       previousSets.sort((a, b) {
         if (a.completedAt == null) return 1;
         if (b.completedAt == null) return -1;
@@ -823,8 +644,8 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Remove'),
-        content: Text('Remove these sets?'),
+        title: const Text('Delete Exercise'),
+        content: Text('Remove ${sets.first.exerciseName} and all its sets?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -833,7 +654,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Remove'),
+            child: const Text('Delete'),
           ),
         ],
       ),
@@ -842,6 +663,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
     if (confirmed == true) {
       final db = ref.read(databaseProvider);
       for (final set in sets) {
+        // Clean up controllers
         _weightControllers[set.id]?.dispose();
         _repsControllers[set.id]?.dispose();
         _weightControllers.remove(set.id);
@@ -853,6 +675,10 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
   }
 
   Future<void> _finishWorkout(BuildContext context) async {
+    // Store the screen-level navigator BEFORE showing the dialog
+    final navigator = Navigator.of(context);
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    
     final db = ref.read(databaseProvider);
     final sets = await db.getSetsForWorkout(_workoutId);
     final completedSets = sets.where((s) => s.isCompleted).length;
@@ -861,7 +687,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
         .fold<double>(0, (sum, s) => sum + (s.weight! * s.reps!));
     
     final notesController = TextEditingController();
-    int selectedIntensity = 3; 
+    int selectedIntensity = 3; // Default to 3 stars
 
     if (!mounted) return;
     final result = await showDialog<Map<String, dynamic>>(
@@ -924,6 +750,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
     );
 
     if (result != null) {
+      // Use write() for partial update
       await (db.update(db.workouts)..where((w) => w.id.equals(_workoutId))).write(
         WorkoutsCompanion(
           endTime: Value(DateTime.now()),
@@ -932,10 +759,10 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
         ),
       );
       
+      // Navigate back using the screen-level navigator
       if (mounted) {
-        // Fix for "stays on the same page" - just pop using the current valid context!
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
+        navigator.pop();
+        scaffoldMessenger.showSnackBar(
           SnackBar(
             content: Text('Workout completed! 💪 $completedSets sets, ${totalVolume.toStringAsFixed(0)}kg volume'),
             duration: const Duration(seconds: 3),

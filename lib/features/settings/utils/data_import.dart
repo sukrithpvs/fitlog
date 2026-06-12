@@ -188,7 +188,8 @@ class DataImporter {
       // Import workouts
       if (data['workouts'] is List) {
         final workouts = data['workouts'] as List;
-        final workoutIdMap = <String, int>{}; // old UUID -> new ID
+        final workoutIdMap = <int, int>{}; // old ID -> new ID
+        final workoutUuidMap = <String, int>{}; // fallback old UUID -> new ID
 
         for (final wData in workouts) {
           if (wData is! Map) continue;
@@ -203,7 +204,12 @@ class DataImporter {
               notes: Value(wData['notes']),
             ),
           );
-          workoutIdMap[wData['uuid']] = workoutId;
+          if (wData['id'] != null) {
+            workoutIdMap[wData['id']] = workoutId;
+          }
+          if (wData['uuid'] != null) {
+            workoutUuidMap[wData['uuid']] = workoutId;
+          }
           workoutsImported++;
         }
 
@@ -219,13 +225,18 @@ class DataImporter {
           for (final sData in sets) {
             if (sData is! Map) continue;
             
-            // Find workout ID by matching old workout structure
+            // Find workout ID
             int? workoutId;
-            for (final oldWorkout in (data['workouts'] as List)) {
-              if (oldWorkout is Map && workoutIdMap.containsKey(oldWorkout['uuid'])) {
-                // Simple match - you may need better logic
-                workoutId = workoutIdMap[oldWorkout['uuid']];
-                break;
+            if (sData['workoutId'] != null && workoutIdMap.containsKey(sData['workoutId'])) {
+              workoutId = workoutIdMap[sData['workoutId']];
+            } else {
+              // Fallback for old backups without 'id'
+              for (final oldWorkout in (data['workouts'] as List)) {
+                if (oldWorkout is Map && workoutUuidMap.containsKey(oldWorkout['uuid'])) {
+                  // This fallback is flawed but kept for backwards compatibility
+                  workoutId = workoutUuidMap[oldWorkout['uuid']];
+                  break;
+                }
               }
             }
 
@@ -247,6 +258,7 @@ class DataImporter {
                 distanceMeters: Value(sData['distanceMeters']),
                 setType: Value(sData['setType'] ?? 'normal'),
                 rpe: Value(sData['rpe']),
+                supersetId: Value(sData['supersetId']),
                 isCompleted: Value(sData['isCompleted'] ?? false),
                 completedAt: Value(sData['completedAt'] != null ? DateTime.parse(sData['completedAt']) : null),
               ),

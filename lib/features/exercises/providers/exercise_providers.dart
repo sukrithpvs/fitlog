@@ -1,5 +1,6 @@
 // lib/features/exercises/providers/exercise_providers.dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:drift/drift.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/database/database_provider.dart';
 import '../data/exercise_repository.dart';
@@ -78,5 +79,57 @@ final filteredExercisesProvider = Provider<AsyncValue<List<Exercise>>>((ref) {
     }
 
     return filtered;
+  });
+});
+
+// History grouped by workout for a specific exercise
+class WorkoutHistoryGroup {
+  final Workout workout;
+  final List<WorkoutSet> sets;
+  WorkoutHistoryGroup({required this.workout, required this.sets});
+}
+
+final exerciseHistoryGroupedProvider = StreamProvider.family<List<WorkoutHistoryGroup>, int>((ref, exerciseId) {
+  final db = ref.watch(databaseProvider);
+  
+  return (db.select(db.workoutSets)
+        ..where((s) => s.exerciseId.equals(exerciseId) & s.isCompleted.equals(true))
+        ..orderBy([(s) => OrderingTerm.desc(s.completedAt)]))
+      .watch()
+      .asyncMap((sets) async {
+    final Map<int, List<WorkoutSet>> groupedSets = {};
+    for (final set in sets) {
+      if (!groupedSets.containsKey(set.workoutId)) {
+        groupedSets[set.workoutId] = [];
+      }
+      groupedSets[set.workoutId]!.add(set);
+    }
+    
+    // Reverse the sets inside each workout so they appear in Set 1, Set 2 order
+    for (final key in groupedSets.keys) {
+      groupedSets[key]!.sort((a, b) => a.setOrder.compareTo(b.setOrder));
+    }
+
+    final List<WorkoutHistoryGroup> history = [];
+    
+    for (final entry in groupedSets.entries) {
+      final workoutId = entry.key;
+      final workoutSets = entry.value;
+      
+      try {
+        final workout = await (db.select(db.workouts)
+              ..where((w) => w.id.equals(workoutId)))
+            .getSingle();
+        
+        history.add(WorkoutHistoryGroup(workout: workout, sets: workoutSets));
+      } catch (_) {
+        // Skip if workout not found
+      }
+    }
+    
+    // Sort descending by workout start time
+    history.sort((a, b) => b.workout.startTime.compareTo(a.workout.startTime));
+    
+    return history;
   });
 });

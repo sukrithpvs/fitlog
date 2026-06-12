@@ -13,120 +13,143 @@ import 'body_metrics_screen.dart';
 import 'muscle_progress_screen.dart';
 
 // ─── Stats Provider (real DB data) ───
-final workoutStatsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+final workoutStatsProvider = StreamProvider<Map<String, dynamic>>((ref) {
   final db = ref.watch(databaseProvider);
-  final workouts = await (db.select(db.workouts)
+  return (db.select(db.workouts)
         ..where((w) => w.isTemplate.equals(false))
         ..orderBy([(w) => OrderingTerm.desc(w.startTime)]))
-      .get();
+      .watch()
+      .asyncMap((workouts) async {
+    final now = DateTime.now();
+    final thisWeekStart = now.subtract(Duration(days: now.weekday - 1));
+    final thisMonthStart = DateTime(now.year, now.month, 1);
 
-  final now = DateTime.now();
-  final thisWeekStart = now.subtract(Duration(days: now.weekday - 1));
-  final thisMonthStart = DateTime(now.year, now.month, 1);
+    final thisWeek = workouts.where((w) => w.startTime.isAfter(thisWeekStart)).length;
+    final thisMonth = workouts.where((w) => w.startTime.isAfter(thisMonthStart)).length;
 
-  final thisWeek = workouts.where((w) => w.startTime.isAfter(thisWeekStart)).length;
-  final thisMonth = workouts.where((w) => w.startTime.isAfter(thisMonthStart)).length;
+    final allSets = await db.select(db.workoutSets).get();
+    final completedSets = allSets.where((s) => s.isCompleted).toList();
+    final totalVolume = completedSets
+        .where((s) => s.weight != null && s.reps != null)
+        .fold<double>(0, (sum, s) => sum + (s.weight! * s.reps!));
 
-  final allSets = await db.select(db.workoutSets).get();
-  final completedSets = allSets.where((s) => s.isCompleted).toList();
-  final totalVolume = completedSets
-      .where((s) => s.weight != null && s.reps != null)
-      .fold<double>(0, (sum, s) => sum + (s.weight! * s.reps!));
-
-  return {
-    'totalWorkouts': workouts.length,
-    'thisWeek': thisWeek,
-    'thisMonth': thisMonth,
-    'totalVolume': totalVolume,
-    'workouts': workouts,
-  };
+    return {
+      'totalWorkouts': workouts.length,
+      'thisWeek': thisWeek,
+      'thisMonth': thisMonth,
+      'totalVolume': totalVolume,
+      'workouts': workouts,
+    };
+  });
 });
 
 // ─── Volume Chart Data Provider ───
-final volumeChartProvider = FutureProvider<List<ChartDataPoint>>((ref) async {
+final volumeChartProvider = StreamProvider<List<ChartDataPoint>>((ref) {
   final db = ref.watch(databaseProvider);
-  final workouts = await (db.select(db.workouts)
+  return (db.select(db.workouts)
         ..where((w) => w.isTemplate.equals(false))
         ..where((w) => w.endTime.isNotNull())
         ..orderBy([(w) => OrderingTerm.asc(w.startTime)]))
-      .get();
+      .watch()
+      .asyncMap((workouts) async {
+    final recent = workouts.length > 10 ? workouts.sublist(workouts.length - 10) : workouts;
 
-  // Take last 10 workouts
-  final recent = workouts.length > 10 ? workouts.sublist(workouts.length - 10) : workouts;
+    final points = <ChartDataPoint>[];
+    for (final workout in recent) {
+      final sets = await db.getSetsForWorkout(workout.id);
+      final volume = sets
+          .where((s) => s.isCompleted && s.weight != null && s.reps != null)
+          .fold<double>(0, (sum, s) => sum + (s.weight! * s.reps!));
+      points.add(ChartDataPoint(
+        label: DateFormatter.shortDate(workout.startTime),
+        value: volume,
+      ));
+    }
 
-  final points = <ChartDataPoint>[];
-  for (final workout in recent) {
-    final sets = await db.getSetsForWorkout(workout.id);
-    final volume = sets
-        .where((s) => s.isCompleted && s.weight != null && s.reps != null)
-        .fold<double>(0, (sum, s) => sum + (s.weight! * s.reps!));
-    points.add(ChartDataPoint(
-      label: DateFormatter.shortDate(workout.startTime),
-      value: volume,
-    ));
-  }
+    return points;
+  });
+});
 
-  return points;
+// ─── Duration Chart Data Provider ───
+final durationChartProvider = StreamProvider<List<ChartDataPoint>>((ref) {
+  final db = ref.watch(databaseProvider);
+  return (db.select(db.workouts)
+        ..where((w) => w.isTemplate.equals(false))
+        ..where((w) => w.endTime.isNotNull())
+        ..orderBy([(w) => OrderingTerm.asc(w.startTime)]))
+      .watch()
+      .map((workouts) {
+    final recent = workouts.length > 10 ? workouts.sublist(workouts.length - 10) : workouts;
+
+    return recent.map((workout) {
+      final duration = workout.endTime!.difference(workout.startTime).inMinutes.toDouble();
+      return ChartDataPoint(
+        label: DateFormatter.shortDate(workout.startTime),
+        value: duration,
+      );
+    }).toList();
+  });
 });
 
 // ─── Weekly Frequency Provider ───
-final weeklyFrequencyProvider = FutureProvider<List<ChartDataPoint>>((ref) async {
+final weeklyFrequencyProvider = StreamProvider<List<ChartDataPoint>>((ref) {
   final db = ref.watch(databaseProvider);
-  final now = DateTime.now();
-  final points = <ChartDataPoint>[];
+  return (db.select(db.workouts)..where((w) => w.isTemplate.equals(false))).watch().map((workouts) {
+    final now = DateTime.now();
+    final points = <ChartDataPoint>[];
 
-  // Last 8 weeks
-  for (int i = 7; i >= 0; i--) {
-    final weekStart = now.subtract(Duration(days: now.weekday - 1 + (i * 7)));
-    final weekEnd = weekStart.add(const Duration(days: 7));
-    
-    final workouts = await (db.select(db.workouts)
-          ..where((w) => w.isTemplate.equals(false))
-          ..where((w) => w.startTime.isBiggerOrEqualValue(weekStart))
-          ..where((w) => w.startTime.isSmallerThanValue(weekEnd)))
-        .get();
+    // Last 8 weeks
+    for (int i = 7; i >= 0; i--) {
+      final weekStart = now.subtract(Duration(days: now.weekday - 1 + (i * 7)));
+      final weekEnd = weekStart.add(const Duration(days: 7));
+      
+      final count = workouts.where((w) => 
+        w.startTime.isAfter(weekStart) && w.startTime.isBefore(weekEnd) || w.startTime.isAtSameMomentAs(weekStart)
+      ).length;
 
-    final label = i == 0 ? 'This' : i == 1 ? 'Last' : '${i}w ago';
-    points.add(ChartDataPoint(
-      label: label,
-      value: workouts.length.toDouble(),
-    ));
-  }
+      final label = i == 0 ? 'This' : i == 1 ? 'Last' : '${i}w ago';
+      points.add(ChartDataPoint(
+        label: label,
+        value: count.toDouble(),
+      ));
+    }
 
-  return points;
+    return points;
+  });
 });
 
 // ─── Muscle Distribution Provider ───
-final muscleDistributionProvider = FutureProvider<Map<String, int>>((ref) async {
+final muscleDistributionProvider = StreamProvider<Map<String, int>>((ref) {
   final db = ref.watch(databaseProvider);
   final thirtyDaysAgo = DateTime.now().subtract(const Duration(days: 30));
 
-  final workouts = await (db.select(db.workouts)
+  return (db.select(db.workouts)
         ..where((w) => w.isTemplate.equals(false))
         ..where((w) => w.startTime.isBiggerOrEqualValue(thirtyDaysAgo)))
-      .get();
+      .watch()
+      .asyncMap((workouts) async {
+    final distribution = <String, int>{};
 
-  final distribution = <String, int>{};
+    for (final workout in workouts) {
+      final sets = await db.getSetsForWorkout(workout.id);
+      final exerciseIds = sets.map((s) => s.exerciseId).toSet();
 
-  for (final workout in workouts) {
-    final sets = await db.getSetsForWorkout(workout.id);
-    final exerciseIds = sets.map((s) => s.exerciseId).toSet();
+      for (final exerciseId in exerciseIds) {
+        try {
+          final exercise = await (db.select(db.exercises)
+                ..where((e) => e.id.equals(exerciseId)))
+              .getSingleOrNull();
 
-    for (final exerciseId in exerciseIds) {
-      try {
-        final exercise = await (db.select(db.exercises)
-              ..where((e) => e.id.equals(exerciseId)))
-            .getSingleOrNull();
-
-        if (exercise != null) {
-          distribution[exercise.primaryMuscle] =
-              (distribution[exercise.primaryMuscle] ?? 0) + 1;
-        }
-      } catch (_) {}
+          if (exercise != null) {
+            distribution[exercise.primaryMuscle] =
+                (distribution[exercise.primaryMuscle] ?? 0) + 1;
+          }
+        } catch (_) {}
+      }
     }
-  }
 
-  return distribution;
+    return distribution;
+  });
 });
 
 // ─── Analytics Screen ───
@@ -139,6 +162,7 @@ class AnalyticsTabScreen extends ConsumerWidget {
     final isDark = theme.brightness == Brightness.dark;
     final statsAsync = ref.watch(workoutStatsProvider);
     final volumeAsync = ref.watch(volumeChartProvider);
+    final durationAsync = ref.watch(durationChartProvider);
     final weeklyAsync = ref.watch(weeklyFrequencyProvider);
     final muscleAsync = ref.watch(muscleDistributionProvider);
 
@@ -270,7 +294,59 @@ class AnalyticsTabScreen extends ConsumerWidget {
                           ),
                         );
                       }
-                      return VolumeLineChart(data: data, height: 220);
+                      return SmoothLineChart(data: data, height: 220, color: AppColors.info);
+                    },
+                    loading: () => const SizedBox(
+                      height: 200,
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                    error: (err, _) => SizedBox(
+                      height: 200,
+                      child: Center(child: Text('Error: $err')),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 28),
+
+                // ─── Duration Over Time Chart ───
+                Text(
+                  'WORKOUT DURATION',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    letterSpacing: 1.2,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                      width: 0.5,
+                    ),
+                  ),
+                  child: durationAsync.when(
+                    data: (data) {
+                      if (data.isEmpty) {
+                        return SizedBox(
+                          height: 200,
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.timer, size: 40, color: theme.colorScheme.outline),
+                                const SizedBox(height: 8),
+                                Text('Complete workouts to see duration trends',
+                                    style: theme.textTheme.bodySmall),
+                              ],
+                            ),
+                          ),
+                        );
+                      }
+                      return SmoothLineChart(data: data, height: 220, color: AppColors.warning, valueFormatter: 'min');
                     },
                     loading: () => const SizedBox(
                       height: 200,
@@ -322,7 +398,7 @@ class AnalyticsTabScreen extends ConsumerWidget {
                           ),
                         );
                       }
-                      return WeeklyBarChart(data: data, height: 200);
+                      return SmoothLineChart(data: data, height: 200, color: AppColors.success);
                     },
                     loading: () => const SizedBox(
                       height: 180,

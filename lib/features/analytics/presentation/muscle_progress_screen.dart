@@ -8,14 +8,16 @@ import '../../../core/theme/app_colors.dart';
 import '../../../shared/widgets/custom_charts.dart';
 
 // Provider for muscle group analytics
-final muscleAnalyticsProvider = FutureProvider.family<MuscleGroupAnalytics, String>((ref, muscle) async {
+final muscleAnalyticsProvider = StreamProvider.family<MuscleGroupAnalytics, String>((ref, muscle) async* {
   final db = ref.watch(databaseProvider);
   
-  // Get all workouts
-  final workouts = await (db.select(db.workouts)
+  // Watch all workouts
+  final workoutsStream = (db.select(db.workouts)
         ..where((w) => w.isTemplate.equals(false))
         ..orderBy([(w) => OrderingTerm.desc(w.startTime)]))
-      .get();
+      .watch();
+
+  await for (final workouts in workoutsStream) {
 
   final thirtyDaysAgo = DateTime.now().subtract(const Duration(days: 30));
   
@@ -93,16 +95,17 @@ final muscleAnalyticsProvider = FutureProvider.family<MuscleGroupAnalytics, Stri
   // Average volume per session
   final avgVolume = workoutsWithMuscle > 0 ? totalVolume / workoutsWithMuscle : 0.0;
   
-  return MuscleGroupAnalytics(
-    muscleName: muscle,
-    totalVolume: totalVolume,
-    totalSets: totalSets,
-    workoutCount: workoutsWithMuscle,
-    frequencyPerWeek: recentWorkoutsWithMuscle / 4.0, // 30 days ≈ 4 weeks
-    avgVolumePerSession: avgVolume,
-    weeklyVolumeData: weeklyData,
-    volumeByDate: volumeByDate,
-  );
+    yield MuscleGroupAnalytics(
+      muscleName: muscle,
+      totalVolume: totalVolume,
+      totalSets: totalSets,
+      workoutCount: workoutsWithMuscle,
+      frequencyPerWeek: recentWorkoutsWithMuscle / 4.0, // 30 days ≈ 4 weeks
+      avgVolumePerSession: avgVolume,
+      weeklyVolumeData: weeklyData,
+      volumeByDate: volumeByDate,
+    );
+  }
 });
 
 class MuscleGroupAnalytics {
@@ -347,7 +350,7 @@ class _MuscleProgressScreenState extends ConsumerState<MuscleProgressScreen> {
                       ),
                     ),
                   )
-                : WeeklyBarChart(
+                : SmoothLineChart(
                     data: analytics.weeklyVolumeData,
                     height: 220,
                     color: color,

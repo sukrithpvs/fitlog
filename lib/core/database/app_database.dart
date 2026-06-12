@@ -49,6 +49,7 @@ class WorkoutSets extends Table {
   IntColumn get rpe => integer().nullable()();
   BoolColumn get isCompleted => boolean().withDefault(const Constant(false))();
   DateTimeColumn get completedAt => dateTime().nullable()();
+  TextColumn get supersetId => text().nullable()();
 }
 
 class RoutineFolders extends Table {
@@ -91,7 +92,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration {
@@ -107,6 +108,9 @@ class AppDatabase extends _$AppDatabase {
         if (from < 2) {
           // Add intensity rating to workouts
           await m.addColumn(workouts, workouts.intensityRating);
+        }
+        if (from < 3) {
+          await m.addColumn(workoutSets, workoutSets.supersetId);
         }
       },
     );
@@ -298,6 +302,7 @@ class AppDatabase extends _$AppDatabase {
             'createdAt': e.createdAt.toIso8601String(),
           }).toList(),
       'workouts': (await select(workouts).get()).map((w) => {
+            'id': w.id,
             'uuid': w.uuid,
             'title': w.title,
             'startTime': w.startTime.toIso8601String(),
@@ -318,6 +323,7 @@ class AppDatabase extends _$AppDatabase {
             'distanceMeters': s.distanceMeters,
             'setType': s.setType,
             'rpe': s.rpe,
+            'supersetId': s.supersetId,
             'isCompleted': s.isCompleted,
             'completedAt': s.completedAt?.toIso8601String(),
           }).toList(),

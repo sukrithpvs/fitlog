@@ -11,23 +11,62 @@ import '../../../core/utils/date_formatter.dart';
 import 'workout_detail_screen.dart';
 
 // Provider for workouts by date
-final workoutsByDateProvider = FutureProvider<Map<DateTime, List<Workout>>>((ref) async {
+final workoutsByDateProvider = StreamProvider<Map<DateTime, List<Workout>>>((ref) async* {
   final db = ref.watch(databaseProvider);
-  final workouts = await (db.select(db.workouts)
+  final workoutsStream = (db.select(db.workouts)
         ..where((w) => w.isTemplate.equals(false))
         ..orderBy([(w) => OrderingTerm.desc(w.startTime)]))
-      .get();
+      .watch();
 
-  final map = <DateTime, List<Workout>>{};
-  for (final workout in workouts) {
-    final date = DateTime(
-      workout.startTime.year,
-      workout.startTime.month,
-      workout.startTime.day,
-    );
-    map.putIfAbsent(date, () => []).add(workout);
+  await for (final workouts in workoutsStream) {
+    final map = <DateTime, List<Workout>>{};
+    for (final workout in workouts) {
+      final date = DateTime(
+        workout.startTime.year,
+        workout.startTime.month,
+        workout.startTime.day,
+      );
+      map.putIfAbsent(date, () => []).add(workout);
+    }
+    yield map;
   }
-  return map;
+});
+
+class MonthlyStats {
+  final int activeDays;
+  final int restDays;
+  final double totalVolume;
+  MonthlyStats(this.activeDays, this.restDays, this.totalVolume);
+}
+
+final monthlyStatsProvider = StreamProvider.family<MonthlyStats, DateTime>((ref, month) async* {
+  final db = ref.watch(databaseProvider);
+  
+  final workoutsStream = (db.select(db.workouts)..where((w) => w.isTemplate.equals(false))).watch();
+  
+  await for (final workouts in workoutsStream) {
+    final monthWorkouts = workouts.where((w) => w.startTime.year == month.year && w.startTime.month == month.month).toList();
+    final activeDays = monthWorkouts.map((w) => w.startTime.day).toSet().length;
+    
+    final now = DateTime.now();
+    int passedDays = DateUtils.getDaysInMonth(month.year, month.month);
+    if (month.year == now.year && month.month == now.month) {
+      passedDays = now.day;
+    } else if (month.isAfter(now)) {
+      passedDays = 0;
+    }
+    int restDays = passedDays > activeDays ? passedDays - activeDays : 0;
+    
+    double totalVolume = 0;
+    for (final w in monthWorkouts) {
+      final sets = await db.getSetsForWorkout(w.id);
+      totalVolume += sets
+          .where((s) => s.isCompleted && s.weight != null && s.reps != null)
+          .fold<double>(0, (sum, s) => sum + (s.weight! * s.reps!));
+    }
+    
+    yield MonthlyStats(activeDays, restDays, totalVolume);
+  }
 });
 
 class CalendarScreen extends ConsumerStatefulWidget {
@@ -71,8 +110,50 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       ),
       body: workoutsAsync.when(
         data: (workoutsByDate) {
+          final statsAsync = ref.watch(monthlyStatsProvider(DateTime(_focusedDay.year, _focusedDay.month)));
+
           return Column(
             children: [
+              // Monthly Summary Banner
+              statsAsync.when(
+                data: (stats) => Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                    border: Border(
+                      bottom: BorderSide(
+                        color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _MonthStat(
+                        icon: Icons.local_fire_department,
+                        label: 'Active',
+                        value: '${stats.activeDays}d',
+                        color: AppColors.accent,
+                      ),
+                      _MonthStat(
+                        icon: Icons.bedtime,
+                        label: 'Rest',
+                        value: '${stats.restDays}d',
+                        color: theme.colorScheme.outline,
+                      ),
+                      _MonthStat(
+                        icon: Icons.fitness_center,
+                        label: 'Volume',
+                        value: '${stats.totalVolume.toStringAsFixed(0)}kg',
+                        color: AppColors.success,
+                      ),
+                    ],
+                  ),
+                ),
+                loading: () => const SizedBox.shrink(),
+                error: (_, __) => const SizedBox.shrink(),
+              ),
+
               // Calendar
               Container(
                 decoration: BoxDecoration(
@@ -105,7 +186,9 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                     });
                   },
                   onPageChanged: (focusedDay) {
-                    _focusedDay = focusedDay;
+                    setState(() {
+                      _focusedDay = focusedDay;
+                    });
                   },
                   calendarStyle: CalendarStyle(
                     todayDecoration: BoxDecoration(
@@ -391,6 +474,45 @@ class _InfoChip extends StatelessWidget {
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.outline,
           ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MonthStat extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  const _MonthStat({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.15),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: color, size: 16),
+        ),
+        const SizedBox(width: 8),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(value, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+            Text(label, style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline)),
+          ],
         ),
       ],
     );

@@ -1,5 +1,4 @@
 // lib/features/history/presentation/workout_detail_screen.dart
-// Shows full breakdown of a completed workout — exercises, sets, volume, notes.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/app_database.dart';
@@ -77,10 +76,11 @@ class WorkoutDetailScreen extends ConsumerWidget {
                 );
               }
 
-              // Group by exercise
-              final exerciseGroups = <String, List<WorkoutSet>>{};
+              // Group by supersetId or exerciseId
+              final groups = <String, List<WorkoutSet>>{};
               for (final set in sets) {
-                exerciseGroups.putIfAbsent(set.exerciseName, () => []).add(set);
+                final key = set.supersetId ?? set.exerciseId.toString();
+                groups.putIfAbsent(key, () => []).add(set);
               }
 
               // Calculate totals
@@ -209,7 +209,7 @@ class WorkoutDetailScreen extends ConsumerWidget {
 
                     // ─── Section Header ───
                     Text(
-                      'EXERCISES (${exerciseGroups.length})',
+                      'EXERCISES (${groups.length})',
                       style: theme.textTheme.labelSmall?.copyWith(
                         letterSpacing: 1.2,
                         fontWeight: FontWeight.w700,
@@ -218,153 +218,14 @@ class WorkoutDetailScreen extends ConsumerWidget {
                     const SizedBox(height: 12),
 
                     // ─── Exercise Cards ───
-                    ...exerciseGroups.entries.map((entry) {
-                      final exerciseName = entry.key;
-                      final exerciseSets = entry.value;
-                      final exerciseVolume = exerciseSets
-                          .where((s) => s.isCompleted && s.weight != null && s.reps != null)
-                          .fold<double>(0, (sum, s) => sum + (s.weight! * s.reps!));
-                      final bestSet = _getBestSet(exerciseSets);
+                    ...groups.values.map((groupSets) {
+                      final isSuperset = groupSets.first.supersetId != null;
 
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-                            width: 0.5,
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Exercise header
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    exerciseName,
-                                    style: theme.textTheme.titleMedium?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.accent.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    '${exerciseVolume.toStringAsFixed(0)} kg',
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: AppColors.accent,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-
-                            // Best set
-                            if (bestSet != null) ...[
-                              const SizedBox(height: 6),
-                              Text(
-                                '🏆 Best: ${bestSet.weight?.toStringAsFixed(1)} kg × ${bestSet.reps}',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: AppColors.warning,
-                                ),
-                              ),
-                            ],
-
-                            const SizedBox(height: 12),
-
-                            // Column Headers
-                            Row(
-                              children: [
-                                SizedBox(
-                                  width: 40,
-                                  child: Text('SET', style: theme.textTheme.labelSmall?.copyWith(
-                                    letterSpacing: 0.8,
-                                  )),
-                                ),
-                                Expanded(
-                                  child: Text('WEIGHT', style: theme.textTheme.labelSmall?.copyWith(
-                                    letterSpacing: 0.8,
-                                  )),
-                                ),
-                                Expanded(
-                                  child: Text('REPS', style: theme.textTheme.labelSmall?.copyWith(
-                                    letterSpacing: 0.8,
-                                  )),
-                                ),
-                                const SizedBox(width: 32),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            Divider(color: theme.colorScheme.outline.withValues(alpha: 0.2)),
-
-                            // Set Rows
-                            ...exerciseSets.asMap().entries.map((setEntry) {
-                              final setIndex = setEntry.key + 1;
-                              final set = setEntry.value;
-
-
-                              return Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 6),
-                                child: Row(
-                                  children: [
-                                    SizedBox(
-                                      width: 40,
-                                      child: Container(
-                                        width: 28,
-                                        height: 28,
-                                        alignment: Alignment.center,
-                                        decoration: BoxDecoration(
-                                          color: set.isCompleted
-                                              ? AppColors.success.withValues(alpha: 0.1)
-                                              : theme.colorScheme.outline.withValues(alpha: 0.1),
-                                          borderRadius: BorderRadius.circular(8),
-                                        ),
-                                        child: Text(
-                                          '$setIndex',
-                                          style: theme.textTheme.bodyMedium?.copyWith(
-                                            fontWeight: FontWeight.w600,
-                                            color: set.isCompleted ? AppColors.success : null,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child: Text(
-                                        set.weight != null ? '${set.weight!.toStringAsFixed(1)} kg' : '—',
-                                        style: theme.textTheme.bodyMedium?.copyWith(
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child: Text(
-                                        set.reps != null ? '${set.reps} reps' : '—',
-                                        style: theme.textTheme.bodyMedium?.copyWith(
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                    ),
-                                    Icon(
-                                      set.isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
-                                      color: set.isCompleted ? AppColors.success : theme.colorScheme.outline,
-                                      size: 20,
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }),
-                          ],
-                        ),
-                      );
+                      if (isSuperset) {
+                        return _buildSupersetCard(context, groupSets);
+                      } else {
+                        return _buildExerciseCard(context, groupSets);
+                      }
                     }),
 
                     const SizedBox(height: 24),
@@ -375,6 +236,213 @@ class WorkoutDetailScreen extends ConsumerWidget {
           );
         },
       ),
+    );
+  }
+
+  Widget _buildExerciseCard(BuildContext context, List<WorkoutSet> sets) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final exerciseName = sets.first.exerciseName;
+    final exerciseVolume = sets
+        .where((s) => s.isCompleted && s.weight != null && s.reps != null)
+        .fold<double>(0, (sum, s) => sum + (s.weight! * s.reps!));
+    final bestSet = _getBestSet(sets);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+          width: 0.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  exerciseName,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${exerciseVolume.toStringAsFixed(0)} kg',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: AppColors.accent,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (bestSet != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              '🏆 Best: ${bestSet.weight?.toStringAsFixed(1)} kg × ${bestSet.reps}',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: AppColors.warning,
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          _buildSetsTable(context, sets),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSupersetCard(BuildContext context, List<WorkoutSet> sets) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final exercises = sets.map((s) => s.exerciseName).toSet().toList();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: AppColors.warning.withValues(alpha: 0.5),
+          width: 2,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.link, color: AppColors.warning),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'SUPERSET (${exercises.length} Exercises)',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: AppColors.warning,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...exercises.map((exName) {
+            final exSets = sets.where((s) => s.exerciseName == exName).toList();
+            final letter = String.fromCharCode(65 + exercises.indexOf(exName));
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(letter, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(exName, style: theme.textTheme.titleSmall)),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                _buildSetsTable(context, exSets),
+                const SizedBox(height: 16),
+              ],
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSetsTable(BuildContext context, List<WorkoutSet> sets) {
+    final theme = Theme.of(context);
+    return Column(
+      children: [
+        Row(
+          children: [
+            SizedBox(
+              width: 40,
+              child: Text('SET', style: theme.textTheme.labelSmall?.copyWith(letterSpacing: 0.8)),
+            ),
+            Expanded(
+              child: Text('WEIGHT', style: theme.textTheme.labelSmall?.copyWith(letterSpacing: 0.8)),
+            ),
+            Expanded(
+              child: Text('REPS', style: theme.textTheme.labelSmall?.copyWith(letterSpacing: 0.8)),
+            ),
+            const SizedBox(width: 32),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Divider(color: theme.colorScheme.outline.withValues(alpha: 0.2)),
+        ...sets.asMap().entries.map((setEntry) {
+          final setIndex = setEntry.key + 1;
+          final set = setEntry.value;
+
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 40,
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: set.isCompleted
+                          ? AppColors.success.withValues(alpha: 0.1)
+                          : theme.colorScheme.outline.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '$setIndex',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: set.isCompleted ? AppColors.success : null,
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    set.weight != null ? '${set.weight!.toStringAsFixed(1)} kg' : '—',
+                    style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    set.reps != null ? '${set.reps} reps' : '—',
+                    style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+                  ),
+                ),
+                Icon(
+                  set.isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
+                  color: set.isCompleted ? AppColors.success : theme.colorScheme.outline,
+                  size: 20,
+                ),
+              ],
+            ),
+          );
+        }),
+      ],
     );
   }
 
