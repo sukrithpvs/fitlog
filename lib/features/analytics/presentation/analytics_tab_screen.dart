@@ -1,11 +1,12 @@
 // lib/features/analytics/presentation/analytics_tab_screen.dart
-// Analytics dashboard — all data from real DB, zero mock data.
+// Analytics dashboard — all data from real DB, granular filtering.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:drift/drift.dart' hide Column;
 
 import '../../../core/database/database_provider.dart';
+import '../../../core/database/app_database.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../../shared/widgets/custom_charts.dart';
@@ -13,7 +14,21 @@ import 'body_metrics_screen.dart';
 import 'muscle_progress_screen.dart';
 import 'widgets/muscle_recovery_card.dart';
 
-// ─── Stats Provider (real DB data) ───
+class AnalyticsModeNotifier extends Notifier<String> {
+  @override
+  String build() => 'Muscle';
+  void setMode(String mode) => state = mode;
+}
+final analyticsModeProvider = NotifierProvider<AnalyticsModeNotifier, String>(AnalyticsModeNotifier.new);
+
+class AnalyticsTargetNotifier extends Notifier<Object?> {
+  @override
+  Object? build() => null;
+  void setTarget(Object? target) => state = target;
+}
+final analyticsTargetProvider = NotifierProvider<AnalyticsTargetNotifier, Object?>(AnalyticsTargetNotifier.new);
+
+// ─── Stats Provider (Overview) ───
 final workoutStatsProvider = StreamProvider<Map<String, dynamic>>((ref) {
   final db = ref.watch(databaseProvider);
   return (db.select(db.workouts)
@@ -44,77 +59,60 @@ final workoutStatsProvider = StreamProvider<Map<String, dynamic>>((ref) {
   });
 });
 
-// ─── Volume Chart Data Provider ───
-final volumeChartProvider = StreamProvider<List<ChartDataPoint>>((ref) {
+// ─── Available Exercises Provider ───
+final availableExercisesProvider = FutureProvider<List<Exercise>>((ref) async {
   final db = ref.watch(databaseProvider);
+  return db.select(db.exercises).get();
+});
+
+// ─── Filtered Volume Chart Provider ───
+final filteredVolumeChartProvider = StreamProvider<List<ChartDataPoint>>((ref) {
+  final db = ref.watch(databaseProvider);
+  final mode = ref.watch(analyticsModeProvider);
+  final target = ref.watch(analyticsTargetProvider);
+
+  if (target == null) return Stream.value([]);
+
   return (db.select(db.workouts)
         ..where((w) => w.isTemplate.equals(false))
         ..where((w) => w.endTime.isNotNull())
         ..orderBy([(w) => OrderingTerm.asc(w.startTime)]))
       .watch()
       .asyncMap((workouts) async {
-    final recent = workouts.length > 10 ? workouts.sublist(workouts.length - 10) : workouts;
-
     final points = <ChartDataPoint>[];
-    for (final workout in recent) {
+
+    for (final workout in workouts) {
       final sets = await db.getSetsForWorkout(workout.id);
-      final volume = sets
-          .where((s) => s.isCompleted && s.weight != null && s.reps != null)
-          .fold<double>(0, (sum, s) => sum + (s.weight! * s.reps!));
-      points.add(ChartDataPoint(
-        label: DateFormatter.shortDate(workout.startTime),
-        value: volume,
-      ));
-    }
-
-    return points;
-  });
-});
-
-// ─── Duration Chart Data Provider ───
-final durationChartProvider = StreamProvider<List<ChartDataPoint>>((ref) {
-  final db = ref.watch(databaseProvider);
-  return (db.select(db.workouts)
-        ..where((w) => w.isTemplate.equals(false))
-        ..where((w) => w.endTime.isNotNull())
-        ..orderBy([(w) => OrderingTerm.asc(w.startTime)]))
-      .watch()
-      .map((workouts) {
-    final recent = workouts.length > 10 ? workouts.sublist(workouts.length - 10) : workouts;
-
-    return recent.map((workout) {
-      final duration = workout.endTime!.difference(workout.startTime).inMinutes.toDouble();
-      return ChartDataPoint(
-        label: DateFormatter.shortDate(workout.startTime),
-        value: duration,
-      );
-    }).toList();
-  });
-});
-
-// ─── Weekly Frequency Provider ───
-final weeklyFrequencyProvider = StreamProvider<List<ChartDataPoint>>((ref) {
-  final db = ref.watch(databaseProvider);
-  return (db.select(db.workouts)..where((w) => w.isTemplate.equals(false))).watch().map((workouts) {
-    final now = DateTime.now();
-    final points = <ChartDataPoint>[];
-
-    // Last 8 weeks
-    for (int i = 7; i >= 0; i--) {
-      final weekStart = now.subtract(Duration(days: now.weekday - 1 + (i * 7)));
-      final weekEnd = weekStart.add(const Duration(days: 7));
       
-      final count = workouts.where((w) => 
-        w.startTime.isAfter(weekStart) && w.startTime.isBefore(weekEnd) || w.startTime.isAtSameMomentAs(weekStart)
-      ).length;
+      double workoutVolume = 0;
+      bool hasRelevantSet = false;
 
-      final label = i == 0 ? 'This' : i == 1 ? 'Last' : '${i}w ago';
-      points.add(ChartDataPoint(
-        label: label,
-        value: count.toDouble(),
-      ));
+      for (final s in sets.where((s) => s.isCompleted && s.weight != null && s.reps != null)) {
+        if (mode == 'Exercise') {
+          if (s.exerciseId == target) {
+            workoutVolume += (s.weight! * s.reps!);
+            hasRelevantSet = true;
+          }
+        } else if (mode == 'Muscle') {
+          final exercise = await (db.select(db.exercises)..where((e) => e.id.equals(s.exerciseId))).getSingleOrNull();
+          if (exercise != null && exercise.primaryMuscle.toLowerCase() == (target as String).toLowerCase()) {
+            workoutVolume += (s.weight! * s.reps!);
+            hasRelevantSet = true;
+          }
+        }
+      }
+
+      if (hasRelevantSet) {
+        points.add(ChartDataPoint(
+          label: DateFormatter.shortDate(workout.startTime),
+          value: workoutVolume,
+        ));
+      }
     }
 
+    if (points.length > 15) {
+      return points.sublist(points.length - 15);
+    }
     return points;
   });
 });
@@ -189,7 +187,6 @@ final muscleRecoveryProvider = StreamProvider<Map<String, double>>((ref) {
     final now = DateTime.now();
     for (final entry in lastTrained.entries) {
       final hoursElapsed = now.difference(entry.value).inHours.toDouble();
-      // Assume 72 hours for 100% recovery
       double percent = hoursElapsed / 72.0;
       if (percent > 1.0) percent = 1.0;
       recovery[entry.key] = percent;
@@ -200,18 +197,36 @@ final muscleRecoveryProvider = StreamProvider<Map<String, double>>((ref) {
 });
 
 // ─── Analytics Screen ───
-class AnalyticsTabScreen extends ConsumerWidget {
+class AnalyticsTabScreen extends ConsumerStatefulWidget {
   const AnalyticsTabScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AnalyticsTabScreen> createState() => _AnalyticsTabScreenState();
+}
+
+class _AnalyticsTabScreenState extends ConsumerState<AnalyticsTabScreen> {
+  
+  @override
+  void initState() {
+    super.initState();
+    // Set initial target when screen loads
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (ref.read(analyticsTargetProvider) == null) {
+        ref.read(analyticsTargetProvider.notifier).setTarget('chest');
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final statsAsync = ref.watch(workoutStatsProvider);
-    final volumeAsync = ref.watch(volumeChartProvider);
-    final durationAsync = ref.watch(durationChartProvider);
-    final weeklyAsync = ref.watch(weeklyFrequencyProvider);
     final muscleAsync = ref.watch(muscleDistributionProvider);
+    final volumeAsync = ref.watch(filteredVolumeChartProvider);
+    
+    final mode = ref.watch(analyticsModeProvider);
+    final target = ref.watch(analyticsTargetProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -241,126 +256,184 @@ class AnalyticsTabScreen extends ConsumerWidget {
             icon: const Icon(Icons.refresh),
             onPressed: () {
               ref.invalidate(workoutStatsProvider);
-              ref.invalidate(volumeChartProvider);
-              ref.invalidate(weeklyFrequencyProvider);
+              ref.invalidate(filteredVolumeChartProvider);
               ref.invalidate(muscleDistributionProvider);
             },
             tooltip: 'Refresh',
           ),
         ],
       ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: isDark
-                ? [
-                    AppColors.darkBg.withValues(alpha: 0.8),
-                    AppColors.darkSurface,
-                  ]
-                : [
-                    AppColors.lightBg,
-                    AppColors.lightSurface,
-                  ],
-          ),
-        ),
-        child: statsAsync.when(
-          data: (stats) {
-            return SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ─── Header ───
-                  Text(
-                    'Overview',
-                    style: theme.textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: -0.5,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Overview Stats Cards
+            statsAsync.when(
+              data: (stats) {
+                return Column(
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _StatCard(
+                            title: 'Total Workouts',
+                            value: '${stats['totalWorkouts']}',
+                            icon: Icons.fitness_center,
+                            color: AppColors.accent,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _StatCard(
+                            title: 'This Week',
+                            value: '${stats['thisWeek']}',
+                            icon: Icons.calendar_today,
+                            color: AppColors.success,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                  
-                  // ─── Stats Cards ───
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _StatCard(
-                          title: 'Total Workouts',
-                          value: stats['totalWorkouts'],
-                          icon: Icons.fitness_center,
-                          color: AppColors.accent,
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _StatCard(
+                            title: 'This Month',
+                            value: '${stats['thisMonth']}',
+                            icon: Icons.calendar_month,
+                            color: AppColors.warning,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _StatCard(
-                          title: 'This Week',
-                          value: stats['thisWeek'],
-                          icon: Icons.local_fire_department,
-                          color: AppColors.error, // vibrant red/orange
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _StatCard(
+                            title: 'Total Volume',
+                            value: _formatVolume(stats['totalVolume'] as double),
+                            icon: Icons.trending_up,
+                            color: AppColors.info,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
+                  ],
+                );
+              },
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (err, _) => Center(child: Text('Error: $err')),
+            ),
+
+            const SizedBox(height: 28),
+
+            // Volume Progress Header
+            Text(
+              'VOLUME PROGRESS',
+              style: theme.textTheme.labelSmall?.copyWith(
+                letterSpacing: 1.2,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Segmented Control & Selector
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                  width: 0.5,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Segmented Toggle
+                  Container(
+                    decoration: BoxDecoration(
+                      color: isDark ? AppColors.darkSurfaceElevated : AppColors.lightSurfaceElevated,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    padding: const EdgeInsets.all(4),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _ToggleButton(
+                            title: 'By Muscle',
+                            isSelected: mode == 'Muscle',
+                            onTap: () {
+                              ref.read(analyticsModeProvider.notifier).setMode('Muscle');
+                              ref.read(analyticsTargetProvider.notifier).setTarget('chest');
+                            },
+                          ),
+                        ),
+                        Expanded(
+                          child: _ToggleButton(
+                            title: 'By Exercise',
+                            isSelected: mode == 'Exercise',
+                            onTap: () {
+                              ref.read(analyticsModeProvider.notifier).setMode('Exercise');
+                              ref.read(analyticsTargetProvider.notifier).setTarget(null);
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _StatCard(
-                          title: 'This Month',
-                          value: stats['thisMonth'],
-                          icon: Icons.calendar_month,
-                          color: AppColors.warning,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _StatCard(
-                          title: 'Total Volume',
-                          value: stats['totalVolume'],
-                          formatter: 'kg',
-                          icon: Icons.trending_up,
-                          color: AppColors.info,
-                        ),
-                      ),
-                    ],
-                  ),
 
-                const SizedBox(height: 36),
+                  // Target Selector
+                  if (mode == 'Muscle')
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: AppColors.muscleColors.keys.map((muscle) {
+                        final isSelected = target is String && target.toLowerCase() == muscle;
+                        return ChoiceChip(
+                          label: Text(muscle[0].toUpperCase() + muscle.substring(1)),
+                          selected: isSelected,
+                          onSelected: (selected) {
+                            if (selected) {
+                              ref.read(analyticsTargetProvider.notifier).setTarget(muscle);
+                            }
+                          },
+                        );
+                      }).toList(),
+                    )
+                  else
+                    ref.watch(availableExercisesProvider).when(
+                      data: (exercises) {
+                        return DropdownButtonFormField<Object>(
+                          value: exercises.any((e) => e.id == target) ? target : null,
+                          decoration: InputDecoration(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          hint: const Text('Select Exercise'),
+                          items: exercises.map((e) {
+                            return DropdownMenuItem<Object>(
+                              value: e.id,
+                              child: Text(e.name),
+                            );
+                          }).toList(),
+                          onChanged: (val) {
+                            if (val != null) {
+                              ref.read(analyticsTargetProvider.notifier).setTarget(val);
+                            }
+                          },
+                        );
+                      },
+                      loading: () => const CircularProgressIndicator(),
+                      error: (err, _) => Text('Error loading exercises: $err'),
+                    ),
 
-                // ─── Volume Over Time Chart ───
-                _SectionHeader(
-                  title: 'Volume Progress',
-                  icon: Icons.insights,
-                  color: AppColors.info,
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: isDark 
-                        ? [AppColors.darkSurface, AppColors.darkBg]
-                        : [AppColors.lightSurface, Colors.white],
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                    ),
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 20,
-                        offset: const Offset(0, 10),
-                      )
-                    ],
-                    border: Border.all(
-                      color: theme.dividerColor.withValues(alpha: 0.5),
-                      width: 1,
-                    ),
-                  ),
-                  child: volumeAsync.when(
+                  const SizedBox(height: 24),
+
+                  // Volume Chart
+                  volumeAsync.when(
                     data: (data) {
                       if (data.isEmpty) {
                         return SizedBox(
@@ -369,10 +442,10 @@ class AnalyticsTabScreen extends ConsumerWidget {
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.show_chart, size: 48, color: theme.colorScheme.outline.withValues(alpha: 0.5)),
-                                const SizedBox(height: 12),
-                                Text('Complete workouts to see volume trends',
-                                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.outline)),
+                                Icon(Icons.show_chart, size: 40, color: theme.colorScheme.outline),
+                                const SizedBox(height: 8),
+                                Text('No volume data for this selection yet.',
+                                    style: theme.textTheme.bodySmall),
                               ],
                             ),
                           ),
@@ -389,302 +462,126 @@ class AnalyticsTabScreen extends ConsumerWidget {
                       child: Center(child: Text('Error: $err')),
                     ),
                   ),
-                ),
-
-                const SizedBox(height: 36),
-
-                // ─── Duration Over Time Chart ───
-                _SectionHeader(
-                  title: 'Workout Duration',
-                  icon: Icons.timer_outlined,
-                  color: AppColors.warning,
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: isDark 
-                        ? [AppColors.darkSurface, AppColors.darkBg]
-                        : [AppColors.lightSurface, Colors.white],
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                    ),
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 20,
-                        offset: const Offset(0, 10),
-                      )
-                    ],
-                    border: Border.all(
-                      color: theme.dividerColor.withValues(alpha: 0.5),
-                      width: 1,
-                    ),
-                  ),
-                  child: durationAsync.when(
-                    data: (data) {
-                      if (data.isEmpty) {
-                        return SizedBox(
-                          height: 200,
-                          child: Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.timer, size: 40, color: theme.colorScheme.outline),
-                                const SizedBox(height: 8),
-                                Text('Complete workouts to see duration trends',
-                                    style: theme.textTheme.bodySmall),
-                              ],
-                            ),
-                          ),
-                        );
-                      }
-                      return SmoothLineChart(data: data, height: 220, color: AppColors.warning, valueFormatter: 'min');
-                    },
-                    loading: () => const SizedBox(
-                      height: 200,
-                      child: Center(child: CircularProgressIndicator()),
-                    ),
-                    error: (err, _) => SizedBox(
-                      height: 200,
-                      child: Center(child: Text('Error: $err')),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 36),
-
-                // ─── Frequency Chart ───
-                _SectionHeader(
-                  title: 'Workout Frequency',
-                  icon: Icons.calendar_month,
-                  color: AppColors.success,
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: isDark 
-                        ? [AppColors.darkSurface, AppColors.darkBg]
-                        : [AppColors.lightSurface, Colors.white],
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                    ),
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 20,
-                        offset: const Offset(0, 10),
-                      )
-                    ],
-                    border: Border.all(
-                      color: theme.dividerColor.withValues(alpha: 0.5),
-                      width: 1,
-                    ),
-                  ),
-                  child: weeklyAsync.when(
-                    data: (data) {
-                      if (data.isEmpty) {
-                        return SizedBox(
-                          height: 180,
-                          child: Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.bar_chart, size: 48, color: theme.colorScheme.outline.withValues(alpha: 0.5)),
-                                const SizedBox(height: 12),
-                                Text('Start working out to track frequency',
-                                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.outline)),
-                              ],
-                            ),
-                          ),
-                        );
-                      }
-                      return SmoothLineChart(data: data, height: 200, color: AppColors.success);
-                    },
-                    loading: () => const SizedBox(
-                      height: 180,
-                      child: Center(child: CircularProgressIndicator()),
-                    ),
-                    error: (err, _) => SizedBox(
-                      height: 180,
-                      child: Center(child: Text('Error: $err')),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 36),
-
-                // ─── Muscle Distribution ───
-                _SectionHeader(
-                  title: 'Muscle Distribution (30 Days)',
-                  icon: Icons.pie_chart_outline,
-                  color: AppColors.accent,
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: isDark 
-                        ? [AppColors.darkSurface, AppColors.darkBg]
-                        : [AppColors.lightSurface, Colors.white],
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                    ),
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 20,
-                        offset: const Offset(0, 10),
-                      )
-                    ],
-                    border: Border.all(
-                      color: theme.dividerColor.withValues(alpha: 0.5),
-                      width: 1,
-                    ),
-                  ),
-                  child: muscleAsync.when(
-                    data: (distribution) {
-                      if (distribution.isEmpty) {
-                        return Padding(
-                          padding: const EdgeInsets.all(20),
-                          child: Center(
-                            child: Column(
-                              children: [
-                                Icon(Icons.pie_chart_outline, size: 40, color: theme.colorScheme.outline),
-                                const SizedBox(height: 8),
-                                Text('Complete workouts to see muscle distribution',
-                                    style: theme.textTheme.bodySmall),
-                              ],
-                            ),
-                          ),
-                        );
-                      }
-
-                      final total = distribution.values.fold<int>(0, (sum, count) => sum + count);
-                      final sorted = distribution.entries.toList()
-                        ..sort((a, b) => b.value.compareTo(a.value));
-
-                        return Column(
-                        children: sorted.map((entry) {
-                          final percentage = entry.value / total;
-                          final muscleKey = entry.key.toLowerCase().replaceAll(' ', '');
-                          final color = AppColors.muscleColors[muscleKey] ?? AppColors.accent;
-
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(entry.key, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
-                                    Text(
-                                      '${(percentage * 100).toInt()}% (${entry.value})',
-                                      style: theme.textTheme.labelMedium?.copyWith(
-                                        fontWeight: FontWeight.w800,
-                                        color: color,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                TweenAnimationBuilder<double>(
-                                  tween: Tween<double>(begin: 0, end: percentage),
-                                  duration: const Duration(milliseconds: 1200),
-                                  curve: Curves.easeOutQuart,
-                                  builder: (context, val, _) {
-                                    return ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: LinearProgressIndicator(
-                                        value: val,
-                                        minHeight: 10,
-                                        backgroundColor: theme.colorScheme.outline.withValues(alpha: 0.1),
-                                        valueColor: AlwaysStoppedAnimation(color),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                      );
-                    },
-                    loading: () => const Padding(
-                      padding: EdgeInsets.all(20),
-                      child: Center(child: CircularProgressIndicator()),
-                    ),
-                    error: (err, _) => Center(child: Text('Error: $err')),
-                  ),
-                ),
-
-                const SizedBox(height: 36),
-                const MuscleRecoveryCard(),
-                const SizedBox(height: 60),
-              ],
+                ],
+              ),
             ),
-          );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, stack) => Center(child: Text('Error: $err')),
+
+            const SizedBox(height: 28),
+
+            // ─── Muscle Distribution Chart ───
+            Text(
+              'MUSCLE DISTRIBUTION (LAST 30 DAYS)',
+              style: theme.textTheme.labelSmall?.copyWith(
+                letterSpacing: 1.2,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                  width: 0.5,
+                ),
+              ),
+              child: muscleAsync.when(
+                data: (distribution) {
+                  if (distribution.isEmpty) {
+                    return SizedBox(
+                      height: 150,
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.pie_chart_outline, size: 40, color: theme.colorScheme.outline),
+                            const SizedBox(height: 8),
+                            Text('Complete workouts to see muscle distribution',
+                                style: theme.textTheme.bodySmall),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+
+                  final total = distribution.values.fold<int>(0, (sum, count) => sum + count);
+                  final sorted = distribution.entries.toList()
+                    ..sort((a, b) => b.value.compareTo(a.value));
+
+                  return Column(
+                    children: sorted.map((entry) {
+                      final percentage = entry.value / total;
+                      final muscleKey = entry.key.toLowerCase().replaceAll(' ', '');
+                      final color = AppColors.muscleColors[muscleKey] ?? AppColors.accent;
+
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(entry.key, style: theme.textTheme.bodyMedium),
+                                Text(
+                                  '${(percentage * 100).toInt()}% (${entry.value})',
+                                  style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: LinearProgressIndicator(
+                                value: percentage,
+                                minHeight: 8,
+                                backgroundColor: theme.colorScheme.outline.withValues(alpha: 0.1),
+                                valueColor: AlwaysStoppedAnimation(color),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  );
+                },
+                loading: () => const Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+                error: (err, _) => Center(child: Text('Error: $err')),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+            const MuscleRecoveryCard(),
+            const SizedBox(height: 32),
+          ],
+        ),
       ),
-    ));
-  }
-}
-
-// ─── Section Header ───
-class _SectionHeader extends StatelessWidget {
-  final String title;
-  final IconData icon;
-  final Color color;
-
-  const _SectionHeader({required this.title, required this.icon, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.15),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon, color: color, size: 20),
-        ),
-        const SizedBox(width: 12),
-        Text(
-          title,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w900,
-            letterSpacing: -0.5,
-          ),
-        ),
-      ],
     );
   }
+
+  String _formatVolume(double volume) {
+    if (volume >= 1000) {
+      return '${(volume / 1000).toStringAsFixed(1)}k kg';
+    }
+    return '${volume.toStringAsFixed(0)} kg';
+  }
 }
 
-// ─── Animated Premium Stat Card Widget ───
+// ─── Stat Card Widget ───
 class _StatCard extends StatelessWidget {
   final String title;
-  final num value;
-  final String formatter;
+  final String value;
   final IconData icon;
   final Color color;
 
   const _StatCard({
     required this.title,
     required this.value,
-    this.formatter = '',
     required this.icon,
     required this.color,
   });
@@ -695,35 +592,14 @@ class _StatCard extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: isDark 
-            ? [
-                color.withValues(alpha: 0.15),
-                color.withValues(alpha: 0.05),
-              ]
-            : [
-                color.withValues(alpha: 0.1),
-                color.withValues(alpha: 0.02),
-              ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
+        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: color.withValues(alpha: 0.2),
-          width: 1.5,
+          color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+          width: 0.5,
         ),
-        boxShadow: isDark
-            ? [
-                BoxShadow(
-                  color: color.withValues(alpha: 0.1),
-                  blurRadius: 15,
-                  spreadRadius: -5,
-                )
-              ]
-            : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -731,59 +607,30 @@ class _StatCard extends StatelessWidget {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: color.withValues(alpha: 0.3),
-                      blurRadius: 8,
-                      spreadRadius: -2,
-                    )
-                  ],
+                  color: color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(icon, color: color, size: 20),
+                child: Icon(icon, color: color, size: 18),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   title,
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.5,
-                  ),
+                  style: theme.textTheme.labelSmall,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          TweenAnimationBuilder<double>(
-            tween: Tween<double>(begin: 0, end: value.toDouble()),
-            duration: const Duration(milliseconds: 1500),
-            curve: Curves.easeOutQuart,
-            builder: (context, animValue, child) {
-              String displayValue;
-              if (formatter == 'kg') {
-                if (animValue >= 1000) {
-                  displayValue = '${(animValue / 1000).toStringAsFixed(1)}k kg';
-                } else {
-                  displayValue = '${animValue.toStringAsFixed(0)} kg';
-                }
-              } else {
-                displayValue = animValue.toInt().toString();
-              }
-
-              return Text(
-                displayValue,
-                style: theme.textTheme.headlineLarge?.copyWith(
-                  fontWeight: FontWeight.w900,
-                  color: theme.colorScheme.onSurface,
-                  letterSpacing: -0.5,
-                ),
-              );
-            },
+          const SizedBox(height: 10),
+          Text(
+            value,
+            style: theme.textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
           ),
         ],
       ),
@@ -791,3 +638,52 @@ class _StatCard extends StatelessWidget {
   }
 }
 
+// ─── Segmented Toggle Button ───
+class _ToggleButton extends StatelessWidget {
+  final String title;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _ToggleButton({
+    required this.title,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected 
+              ? (isDark ? AppColors.darkSurface : AppColors.lightSurface)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  )
+                ]
+              : [],
+        ),
+        child: Text(
+          title,
+          textAlign: TextAlign.center,
+          style: theme.textTheme.labelMedium?.copyWith(
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            color: isSelected ? theme.colorScheme.onSurface : theme.colorScheme.outline,
+          ),
+        ),
+      ),
+    );
+  }
+}

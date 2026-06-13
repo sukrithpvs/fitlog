@@ -1,8 +1,8 @@
-// lib/features/analytics/presentation/widgets/muscle_recovery_card.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../../core/theme/app_colors.dart';
-import '../analytics_tab_screen.dart';
+import '../analytics_tab_screen.dart'; // To access muscleRecoveryProvider
 
 class MuscleRecoveryCard extends ConsumerWidget {
   const MuscleRecoveryCard({super.key});
@@ -14,26 +14,13 @@ class MuscleRecoveryCard extends ConsumerWidget {
     final recoveryAsync = ref.watch(muscleRecoveryProvider);
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: isDark 
-            ? [AppColors.darkSurface, AppColors.darkBg]
-            : [AppColors.lightSurface, Colors.white],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          )
-        ],
+        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: theme.dividerColor.withValues(alpha: 0.5),
-          width: 1,
+          color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+          width: 0.5,
         ),
       ),
       child: Column(
@@ -44,60 +31,58 @@ class MuscleRecoveryCard extends ConsumerWidget {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppColors.error.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
+                  color: AppColors.accent.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.battery_charging_full, color: AppColors.error, size: 20),
+                child: const Icon(Icons.battery_charging_full, color: AppColors.accent, size: 20),
               ),
               const SizedBox(width: 12),
               Text(
                 'Muscle Recovery',
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -0.5,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
           recoveryAsync.when(
             data: (recoveryData) {
               if (recoveryData.isEmpty) {
-                return const Center(child: Text('Not enough data'));
+                return Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Center(
+                    child: Text('Complete workouts to track recovery', style: theme.textTheme.bodySmall),
+                  ),
+                );
               }
 
-              // Sort by least recovered first
-              final sortedEntries = recoveryData.entries.toList()
+              final sorted = recoveryData.entries.toList()
                 ..sort((a, b) => a.value.compareTo(b.value));
 
               return Column(
-                children: sortedEntries.map((entry) {
+                children: sorted.map((entry) {
                   final muscle = entry.key;
                   final percent = entry.value;
                   
                   Color color;
                   String status;
-                  IconData statusIcon;
                   if (percent < 0.33) {
                     color = AppColors.error;
                     status = 'Exhausted';
-                    statusIcon = Icons.warning_rounded;
                   } else if (percent < 0.66) {
                     color = AppColors.warning;
                     status = 'Recovering';
-                    statusIcon = Icons.hourglass_bottom_rounded;
                   } else if (percent < 1.0) {
                     color = Colors.lightGreen;
                     status = 'Almost Ready';
-                    statusIcon = Icons.battery_charging_full_rounded;
                   } else {
                     color = AppColors.success;
                     status = 'Fully Recovered';
-                    statusIcon = Icons.check_circle_rounded;
                   }
 
                   return Padding(
-                    padding: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.only(bottom: 12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -106,39 +91,26 @@ class MuscleRecoveryCard extends ConsumerWidget {
                           children: [
                             Text(
                               muscle[0].toUpperCase() + muscle.substring(1),
-                              style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                              style: theme.textTheme.bodyMedium,
                             ),
-                            Row(
-                              children: [
-                                Icon(statusIcon, color: color, size: 14),
-                                const SizedBox(width: 4),
-                                Text(
-                                  status,
-                                  style: theme.textTheme.labelMedium?.copyWith(
-                                    color: color,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ],
+                            Text(
+                              status,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: color,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 8),
-                        TweenAnimationBuilder<double>(
-                          tween: Tween<double>(begin: 0, end: percent),
-                          duration: const Duration(milliseconds: 1500),
-                          curve: Curves.easeOutQuart,
-                          builder: (context, val, _) {
-                            return ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: LinearProgressIndicator(
-                                value: val,
-                                minHeight: 12,
-                                backgroundColor: theme.colorScheme.outline.withValues(alpha: 0.1),
-                                valueColor: AlwaysStoppedAnimation(color),
-                              ),
-                            );
-                          },
+                        const SizedBox(height: 6),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LinearProgressIndicator(
+                            value: percent,
+                            backgroundColor: theme.colorScheme.outline.withValues(alpha: 0.1),
+                            color: color,
+                            minHeight: 8,
+                          ),
                         ),
                       ],
                     ),
@@ -147,7 +119,7 @@ class MuscleRecoveryCard extends ConsumerWidget {
               );
             },
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (err, stack) => Text('Error: $err'),
+            error: (err, _) => Center(child: Text('Error: $err')),
           ),
         ],
       ),
