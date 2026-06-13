@@ -52,7 +52,6 @@ final globalVolumeChartProvider = StreamProvider<List<ChartDataPoint>>((ref) {
 
   return (db.select(db.workouts)
         ..where((w) => w.isTemplate.equals(false))
-        ..where((w) => w.endTime.isNotNull())
         ..orderBy([(w) => OrderingTerm.asc(w.startTime)]))
       .watch()
       .asyncMap((workouts) async {

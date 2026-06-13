@@ -11,18 +11,17 @@ import '../../../shared/widgets/custom_charts.dart';
 
 // ─── Performed Exercises Provider ───
 // Only returns exercises the user has completed at least one set of.
-final performedExercisesProvider = FutureProvider<List<Exercise>>((ref) async {
+final performedExercisesProvider = StreamProvider<List<Exercise>>((ref) {
   final db = ref.watch(databaseProvider);
-  final allSets = await db.select(db.workoutSets).get();
-  
-  // Get unique exercise IDs from completed sets
-  final completedSetIds = allSets.where((s) => s.isCompleted).map((s) => s.exerciseId).toSet();
-  
-  if (completedSetIds.isEmpty) return [];
+  return db.select(db.workoutSets).watch().asyncMap((allSets) async {
+    final completedSetIds = allSets.where((s) => s.isCompleted).map((s) => s.exerciseId).toSet();
+    
+    if (completedSetIds.isEmpty) return [];
 
-  return (db.select(db.exercises)
-        ..where((e) => e.id.isIn(completedSetIds)))
-      .get();
+    return (db.select(db.exercises)
+          ..where((e) => e.id.isIn(completedSetIds)))
+        .get();
+  });
 });
 
 // ─── Exercise Stats Provider ───
@@ -49,7 +48,6 @@ final exerciseStatsProvider = StreamProvider.family<ExerciseStats?, int>((ref, e
 
   return (db.select(db.workouts)
         ..where((w) => w.isTemplate.equals(false))
-        ..where((w) => w.endTime.isNotNull())
         ..orderBy([(w) => OrderingTerm.asc(w.startTime)]))
       .watch()
       .asyncMap((workouts) async {
