@@ -12,21 +12,8 @@ import '../../../core/utils/date_formatter.dart';
 import '../../../shared/widgets/custom_charts.dart';
 import 'body_metrics_screen.dart';
 import 'muscle_progress_screen.dart';
+import 'exercise_progress_screen.dart';
 import 'widgets/muscle_recovery_card.dart';
-
-class AnalyticsModeNotifier extends Notifier<String> {
-  @override
-  String build() => 'Muscle';
-  void setMode(String mode) => state = mode;
-}
-final analyticsModeProvider = NotifierProvider<AnalyticsModeNotifier, String>(AnalyticsModeNotifier.new);
-
-class AnalyticsTargetNotifier extends Notifier<Object?> {
-  @override
-  Object? build() => null;
-  void setTarget(Object? target) => state = target;
-}
-final analyticsTargetProvider = NotifierProvider<AnalyticsTargetNotifier, Object?>(AnalyticsTargetNotifier.new);
 
 // ─── Stats Provider (Overview) ───
 final workoutStatsProvider = StreamProvider<Map<String, dynamic>>((ref) {
@@ -59,19 +46,9 @@ final workoutStatsProvider = StreamProvider<Map<String, dynamic>>((ref) {
   });
 });
 
-// ─── Available Exercises Provider ───
-final availableExercisesProvider = FutureProvider<List<Exercise>>((ref) async {
+// ─── Global Volume Chart Provider ───
+final globalVolumeChartProvider = StreamProvider<List<ChartDataPoint>>((ref) {
   final db = ref.watch(databaseProvider);
-  return db.select(db.exercises).get();
-});
-
-// ─── Filtered Volume Chart Provider ───
-final filteredVolumeChartProvider = StreamProvider<List<ChartDataPoint>>((ref) {
-  final db = ref.watch(databaseProvider);
-  final mode = ref.watch(analyticsModeProvider);
-  final target = ref.watch(analyticsTargetProvider);
-
-  if (target == null) return Stream.value([]);
 
   return (db.select(db.workouts)
         ..where((w) => w.isTemplate.equals(false))
@@ -85,24 +62,12 @@ final filteredVolumeChartProvider = StreamProvider<List<ChartDataPoint>>((ref) {
       final sets = await db.getSetsForWorkout(workout.id);
       
       double workoutVolume = 0;
-      bool hasRelevantSet = false;
 
       for (final s in sets.where((s) => s.isCompleted && s.weight != null && s.reps != null)) {
-        if (mode == 'Exercise') {
-          if (s.exerciseId == target) {
-            workoutVolume += (s.weight! * s.reps!);
-            hasRelevantSet = true;
-          }
-        } else if (mode == 'Muscle') {
-          final exercise = await (db.select(db.exercises)..where((e) => e.id.equals(s.exerciseId))).getSingleOrNull();
-          if (exercise != null && exercise.primaryMuscle.toLowerCase() == (target as String).toLowerCase()) {
-            workoutVolume += (s.weight! * s.reps!);
-            hasRelevantSet = true;
-          }
-        }
+         workoutVolume += (s.weight! * s.reps!);
       }
 
-      if (hasRelevantSet) {
+      if (workoutVolume > 0) {
         points.add(ChartDataPoint(
           label: DateFormatter.shortDate(workout.startTime),
           value: workoutVolume,
@@ -205,17 +170,6 @@ class AnalyticsTabScreen extends ConsumerStatefulWidget {
 }
 
 class _AnalyticsTabScreenState extends ConsumerState<AnalyticsTabScreen> {
-  
-  @override
-  void initState() {
-    super.initState();
-    // Set initial target when screen loads
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (ref.read(analyticsTargetProvider) == null) {
-        ref.read(analyticsTargetProvider.notifier).setTarget('chest');
-      }
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -223,10 +177,6 @@ class _AnalyticsTabScreenState extends ConsumerState<AnalyticsTabScreen> {
     final isDark = theme.brightness == Brightness.dark;
     final statsAsync = ref.watch(workoutStatsProvider);
     final muscleAsync = ref.watch(muscleDistributionProvider);
-    final volumeAsync = ref.watch(filteredVolumeChartProvider);
-    
-    final mode = ref.watch(analyticsModeProvider);
-    final target = ref.watch(analyticsTargetProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -243,6 +193,16 @@ class _AnalyticsTabScreenState extends ConsumerState<AnalyticsTabScreen> {
             tooltip: 'Muscle Progress',
           ),
           IconButton(
+            icon: const Icon(Icons.show_chart),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ExerciseProgressScreen()),
+              );
+            },
+            tooltip: 'Exercise Progress',
+          ),
+          IconButton(
             icon: const Icon(Icons.monitor_weight),
             onPressed: () {
               Navigator.push(
@@ -256,7 +216,7 @@ class _AnalyticsTabScreenState extends ConsumerState<AnalyticsTabScreen> {
             icon: const Icon(Icons.refresh),
             onPressed: () {
               ref.invalidate(workoutStatsProvider);
-              ref.invalidate(filteredVolumeChartProvider);
+              ref.invalidate(globalVolumeChartProvider);
               ref.invalidate(muscleDistributionProvider);
             },
             tooltip: 'Refresh',
@@ -349,91 +309,17 @@ class _AnalyticsTabScreenState extends ConsumerState<AnalyticsTabScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Segmented Toggle
-                  Container(
-                    decoration: BoxDecoration(
-                      color: isDark ? AppColors.darkSurfaceElevated : AppColors.lightSurfaceElevated,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    padding: const EdgeInsets.all(4),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: _ToggleButton(
-                            title: 'By Muscle',
-                            isSelected: mode == 'Muscle',
-                            onTap: () {
-                              ref.read(analyticsModeProvider.notifier).setMode('Muscle');
-                              ref.read(analyticsTargetProvider.notifier).setTarget('chest');
-                            },
-                          ),
-                        ),
-                        Expanded(
-                          child: _ToggleButton(
-                            title: 'By Exercise',
-                            isSelected: mode == 'Exercise',
-                            onTap: () {
-                              ref.read(analyticsModeProvider.notifier).setMode('Exercise');
-                              ref.read(analyticsTargetProvider.notifier).setTarget(null);
-                            },
-                          ),
-                        ),
-                      ],
+                  Text(
+                    'TOTAL VOLUME',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: theme.colorScheme.outline,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                   const SizedBox(height: 16),
-
-                  // Target Selector
-                  if (mode == 'Muscle')
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: AppColors.muscleColors.keys.map((muscle) {
-                        final isSelected = target is String && target.toLowerCase() == muscle;
-                        return ChoiceChip(
-                          label: Text(muscle[0].toUpperCase() + muscle.substring(1)),
-                          selected: isSelected,
-                          onSelected: (selected) {
-                            if (selected) {
-                              ref.read(analyticsTargetProvider.notifier).setTarget(muscle);
-                            }
-                          },
-                        );
-                      }).toList(),
-                    )
-                  else
-                    ref.watch(availableExercisesProvider).when(
-                      data: (exercises) {
-                        return DropdownButtonFormField<Object>(
-                          value: exercises.any((e) => e.id == target) ? target : null,
-                          decoration: InputDecoration(
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                          hint: const Text('Select Exercise'),
-                          items: exercises.map((e) {
-                            return DropdownMenuItem<Object>(
-                              value: e.id,
-                              child: Text(e.name),
-                            );
-                          }).toList(),
-                          onChanged: (val) {
-                            if (val != null) {
-                              ref.read(analyticsTargetProvider.notifier).setTarget(val);
-                            }
-                          },
-                        );
-                      },
-                      loading: () => const CircularProgressIndicator(),
-                      error: (err, _) => Text('Error loading exercises: $err'),
-                    ),
-
-                  const SizedBox(height: 24),
-
+                  
                   // Volume Chart
-                  volumeAsync.when(
+                  ref.watch(globalVolumeChartProvider).when(
                     data: (data) {
                       if (data.isEmpty) {
                         return SizedBox(
@@ -444,7 +330,7 @@ class _AnalyticsTabScreenState extends ConsumerState<AnalyticsTabScreen> {
                               children: [
                                 Icon(Icons.show_chart, size: 40, color: theme.colorScheme.outline),
                                 const SizedBox(height: 8),
-                                Text('No volume data for this selection yet.',
+                                Text('No volume data yet.',
                                     style: theme.textTheme.bodySmall),
                               ],
                             ),
