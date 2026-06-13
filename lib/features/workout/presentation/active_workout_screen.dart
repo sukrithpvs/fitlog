@@ -11,6 +11,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../exercises/presentation/widgets/exercise_picker_modal.dart';
 import '../../../core/utils/pr_detector.dart';
+import '../../../core/utils/notification_service.dart';
 import 'widgets/plate_calculator_modal.dart';
 
 class ActiveWorkoutScreen extends ConsumerStatefulWidget {
@@ -696,7 +697,10 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
         setState(() => _restSecondsRemaining--);
         _startRestTimer();
       } else if (_restSecondsRemaining == 0) {
-        setState(() => _activeRestSetId = null);
+        if (mounted && _activeRestSetId != null) {
+          setState(() => _activeRestSetId = null);
+          NotificationService().showRestCompleteNotification();
+        }
       }
     });
   }

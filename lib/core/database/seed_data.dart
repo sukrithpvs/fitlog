@@ -1,5 +1,5 @@
 // lib/core/database/seed_data.dart
-// Comprehensive exercise library matching Hevy app (100+ exercises)
+// Comprehensive exercise library matching Hevy app (200+ exercises)
 
 import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
@@ -8,130 +8,258 @@ import 'app_database.dart';
 const _uuid = Uuid();
 
 Future<void> seedDefaultExercises(AppDatabase db) async {
-  final existingCount = await db.select(db.exercises).get();
-  if (existingCount.isNotEmpty) return;
+  // Fetch existing exercises to avoid duplicates
+  final existingExercises = await db.select(db.exercises).get();
+  final existingNames = existingExercises.map((e) => e.name).toSet();
 
   final exercises = <ExercisesCompanion>[
     // ═══ CHEST ═══
-    _e('Bench Press', 'chest', '', 'barbell'),
-    _e('Incline Bench Press', 'chest', '', 'barbell'),
-    _e('Decline Bench Press', 'chest', '', 'barbell'),
-    _e('Dumbbell Bench Press', 'chest', '', 'dumbbell'),
-    _e('Incline Dumbbell Press', 'chest', '', 'dumbbell'),
-    _e('Decline Dumbbell Press', 'chest', '', 'dumbbell'),
+    _e('Bench Press', 'chest', 'triceps', 'barbell'),
+    _e('Incline Bench Press', 'chest', 'shoulders', 'barbell'),
+    _e('Decline Bench Press', 'chest', 'triceps', 'barbell'),
+    _e('Dumbbell Bench Press', 'chest', 'triceps', 'dumbbell'),
+    _e('Incline Dumbbell Press', 'chest', 'shoulders', 'dumbbell'),
+    _e('Decline Dumbbell Press', 'chest', 'triceps', 'dumbbell'),
     _e('Chest Fly', 'chest', '', 'dumbbell'),
+    _e('Incline Chest Fly', 'chest', '', 'dumbbell'),
+    _e('Decline Chest Fly', 'chest', '', 'dumbbell'),
     _e('Cable Crossover', 'chest', '', 'cable'),
     _e('Cable Fly Up to Down', 'chest', '', 'cable'),
+    _e('Cable Fly Down to Up', 'chest', '', 'cable'),
     _e('Pec Fly', 'chest', '', 'machine'),
     _e('Pec Deck Fly', 'chest', '', 'machine'),
     _e('Push-Up', 'chest', 'triceps', 'bodyweight', 'reps_only'),
     _e('Weighted Push-Up', 'chest', 'triceps', 'bodyweight'),
     _e('Dips (Chest)', 'chest', 'triceps', 'bodyweight', 'reps_only'),
-    _e('Weighted Dips', 'chest', 'triceps', 'bodyweight'),
+    _e('Weighted Dips (Chest)', 'chest', 'triceps', 'bodyweight'),
+    _e('Machine Chest Press', 'chest', 'triceps', 'machine'),
+    _e('Machine Incline Press', 'chest', 'shoulders', 'machine'),
+    _e('Machine Decline Press', 'chest', 'triceps', 'machine'),
+    _e('Smith Machine Bench Press', 'chest', 'triceps', 'machine'),
+    _e('Smith Machine Incline Press', 'chest', 'shoulders', 'machine'),
+    _e('Smith Machine Decline Press', 'chest', 'triceps', 'machine'),
+    _e('Floor Press', 'chest', 'triceps', 'barbell'),
+    _e('Dumbbell Floor Press', 'chest', 'triceps', 'dumbbell'),
+    _e('Guillotine Press', 'chest', '', 'barbell'),
+    _e('Svend Press', 'chest', '', 'dumbbell'),
+    _e('Plate Pinch Press', 'chest', '', 'other'),
 
     // ═══ BACK ═══
     _e('Deadlift', 'back', 'hamstrings', 'barbell'),
+    _e('Sumo Deadlift', 'back', 'legs', 'barbell'),
+    _e('Deficit Deadlift', 'back', 'legs', 'barbell'),
     _e('Barbell Row', 'back', 'biceps', 'barbell'),
     _e('Pendlay Row', 'back', 'biceps', 'barbell'),
+    _e('Yates Row', 'back', 'biceps', 'barbell'),
     _e('Single Arm Dumbbell Row', 'back', 'biceps', 'dumbbell'),
+    _e('Chest Supported Dumbbell Row', 'back', 'biceps', 'dumbbell'),
     _e('Lat Pulldown', 'back', 'biceps', 'cable'),
+    _e('Lat Pulldown (Close Grip)', 'back', 'biceps', 'cable'),
+    _e('Lat Pulldown (Wide Grip)', 'back', 'biceps', 'cable'),
+    _e('Lat Pulldown (Reverse Grip)', 'back', 'biceps', 'cable'),
+    _e('Lat Pulldown (V-Bar)', 'back', 'biceps', 'cable'),
     _e('Pull-Up', 'back', 'biceps', 'bodyweight', 'reps_only'),
     _e('Weighted Pull-Up', 'back', 'biceps', 'bodyweight'),
     _e('Chin-Up', 'back', 'biceps', 'bodyweight', 'reps_only'),
+    _e('Weighted Chin-Up', 'back', 'biceps', 'bodyweight'),
     _e('Seated Cable Row', 'back', 'biceps', 'cable'),
+    _e('Seated Cable Row (V-Bar)', 'back', 'biceps', 'cable'),
+    _e('Seated Cable Row (Wide Grip)', 'back', 'biceps', 'cable'),
     _e('Mid Row', 'back', 'biceps', 'cable'),
     _e('T-Bar Row', 'back', 'biceps', 'machine'),
     _e('Straight Arm Lat Pulldown', 'back', '', 'cable'),
+    _e('Straight Arm Lat Pulldown (Rope)', 'back', '', 'cable'),
     _e('Hyperextensions', 'back', 'hamstrings', 'bodyweight', 'reps_only'),
     _e('Face Pull', 'back', 'shoulders', 'cable'),
+    _e('Machine Row', 'back', 'biceps', 'machine'),
+    _e('Meadows Row', 'back', 'biceps', 'barbell'),
+    _e('Renegade Row', 'back', 'core', 'dumbbell'),
+    _e('Good Morning', 'back', 'hamstrings', 'barbell'),
+    _e('Rack Pull', 'back', 'hamstrings', 'barbell'),
+    _e('Inverted Row', 'back', 'biceps', 'bodyweight', 'reps_only'),
 
-    // ═══ LEGS (QUADS) ═══
+    // ═══ LEGS (QUADS & GLUTES) ═══
     _e('Squat', 'legs', 'hamstrings', 'barbell'),
-    _e('Front Squat', 'legs', '', 'barbell'),
-    _e('Goblet Squat', 'legs', '', 'dumbbell'),
+    _e('Front Squat', 'legs', 'core', 'barbell'),
+    _e('Goblet Squat', 'legs', 'core', 'dumbbell'),
+    _e('Zercher Squat', 'legs', 'core', 'barbell'),
+    _e('Box Squat', 'legs', 'hamstrings', 'barbell'),
     _e('Leg Press', 'legs', 'hamstrings', 'machine'),
     _e('Hack Squat', 'legs', '', 'machine'),
+    _e('Pendulum Squat', 'legs', '', 'machine'),
     _e('Leg Extension', 'legs', '', 'machine'),
     _e('Lunges', 'legs', '', 'dumbbell'),
+    _e('Walking Lunges', 'legs', '', 'dumbbell'),
+    _e('Reverse Lunges', 'legs', '', 'dumbbell'),
     _e('Bulgarian Split Squat', 'legs', '', 'dumbbell'),
+    _e('Bulgarian Split Squat (Barbell)', 'legs', '', 'barbell'),
     _e('Step-Up', 'legs', '', 'dumbbell'),
-
-    // ═══ LEGS (HAMSTRINGS) ═══
+    _e('Sissy Squat', 'legs', '', 'bodyweight', 'reps_only'),
+    _e('Pistol Squat', 'legs', '', 'bodyweight', 'reps_only'),
+    _e('Smith Machine Squat', 'legs', 'hamstrings', 'machine'),
+    _e('Belt Squat', 'legs', '', 'machine'),
+    
+    // ═══ LEGS (HAMSTRINGS & GLUTES) ═══
     _e('Romanian Deadlift', 'hamstrings', 'back', 'barbell'),
+    _e('Romanian Deadlift (Dumbbell)', 'hamstrings', 'back', 'dumbbell'),
     _e('Stiff-Legged Deadlift', 'hamstrings', 'back', 'barbell'),
     _e('Lying Leg Curl', 'hamstrings', '', 'machine'),
     _e('Seated Leg Curl', 'hamstrings', '', 'machine'),
-    _e('Leg Curl', 'hamstrings', '', 'machine'),
+    _e('Standing Leg Curl', 'hamstrings', '', 'machine'),
     _e('Hip Thrust', 'hamstrings', '', 'barbell'),
+    _e('Hip Thrust (Machine)', 'hamstrings', '', 'machine'),
     _e('Glute Bridge', 'hamstrings', '', 'bodyweight', 'reps_only'),
     _e('Cable Pull Through', 'hamstrings', '', 'cable'),
-    _e('Good Morning', 'hamstrings', 'back', 'barbell'),
+    _e('Glute Kickback (Machine)', 'hamstrings', '', 'machine'),
+    _e('Glute Kickback (Cable)', 'hamstrings', '', 'cable'),
+    _e('Hip Abductor (Machine)', 'legs', '', 'machine'),
+    _e('Hip Adductor (Machine)', 'legs', '', 'machine'),
+    _e('Nordic Hamstring Curl', 'hamstrings', '', 'bodyweight', 'reps_only'),
 
     // ═══ CALVES ═══
     _e('Standing Calf Raise', 'legs', '', 'machine'),
     _e('Seated Calf Raise', 'legs', '', 'machine'),
     _e('Calf Raises', 'legs', '', 'bodyweight', 'reps_only'),
     _e('Calf Press on Leg Press', 'legs', '', 'machine'),
+    _e('Donkey Calf Raise', 'legs', '', 'machine'),
+    _e('Single Leg Calf Raise', 'legs', '', 'dumbbell'),
 
     // ═══ SHOULDERS ═══
     _e('Overhead Press', 'shoulders', 'triceps', 'barbell'),
     _e('Dumbbell Shoulder Press', 'shoulders', 'triceps', 'dumbbell'),
     _e('Seated Dumbbell Press', 'shoulders', 'triceps', 'dumbbell'),
     _e('Arnold Press', 'shoulders', 'triceps', 'dumbbell'),
+    _e('Push Press', 'shoulders', 'triceps', 'barbell'),
+    _e('Machine Shoulder Press', 'shoulders', 'triceps', 'machine'),
+    _e('Smith Machine Shoulder Press', 'shoulders', 'triceps', 'machine'),
     _e('Lateral Raises', 'shoulders', '', 'dumbbell'),
     _e('Cable Lateral Raise', 'shoulders', '', 'cable'),
+    _e('Machine Lateral Raise', 'shoulders', '', 'machine'),
     _e('Front Raise', 'shoulders', '', 'dumbbell'),
+    _e('Cable Front Raise', 'shoulders', '', 'cable'),
+    _e('Barbell Front Raise', 'shoulders', '', 'barbell'),
     _e('Rear Delt Fly', 'shoulders', '', 'dumbbell'),
     _e('Reverse Pec Fly', 'shoulders', '', 'machine'),
+    _e('Cable Rear Delt Fly', 'shoulders', '', 'cable'),
     _e('Upright Row', 'shoulders', '', 'barbell'),
+    _e('Upright Row (Cable)', 'shoulders', '', 'cable'),
+    _e('Upright Row (Dumbbell)', 'shoulders', '', 'dumbbell'),
     _e('Shrugs', 'shoulders', '', 'barbell'),
+    _e('Dumbbell Shrugs', 'shoulders', '', 'dumbbell'),
+    _e('Lu Raises', 'shoulders', '', 'dumbbell'),
 
     // ═══ BICEPS ═══
     _e('Bicep Curl', 'biceps', '', 'barbell'),
     _e('Dumbbell Curl', 'biceps', '', 'dumbbell'),
+    _e('Alternating Dumbbell Curl', 'biceps', '', 'dumbbell'),
     _e('Hammer Curl', 'biceps', '', 'dumbbell'),
+    _e('Cable Hammer Curl (Rope)', 'biceps', '', 'cable'),
     _e('Preacher Curl', 'biceps', '', 'machine'),
+    _e('EZ-Bar Preacher Curl', 'biceps', '', 'barbell'),
+    _e('Dumbbell Preacher Curl', 'biceps', '', 'dumbbell'),
     _e('Cable Curl', 'biceps', '', 'cable'),
+    _e('Cable Curl (Straight Bar)', 'biceps', '', 'cable'),
+    _e('Cable Curl (EZ-Bar)', 'biceps', '', 'cable'),
+    _e('Cable Curl (Rope)', 'biceps', '', 'cable'),
     _e('Concentration Curl', 'biceps', '', 'dumbbell'),
     _e('Incline Dumbbell Curl', 'biceps', '', 'dumbbell'),
     _e('Spider Curl', 'biceps', '', 'dumbbell'),
+    _e('Reverse Curl', 'biceps', 'forearms', 'barbell'),
+    _e('Reverse Curl (EZ-Bar)', 'biceps', 'forearms', 'barbell'),
+    _e('Zottman Curl', 'biceps', 'forearms', 'dumbbell'),
+    _e('Drag Curl', 'biceps', '', 'barbell'),
+    _e('Machine Bicep Curl', 'biceps', '', 'machine'),
 
     // ═══ TRICEPS ═══
     _e('Tricep Pushdown', 'triceps', '', 'cable'),
+    _e('Tricep Pushdown (Rope)', 'triceps', '', 'cable'),
+    _e('Tricep Pushdown (Straight Bar)', 'triceps', '', 'cable'),
+    _e('Tricep Pushdown (V-Bar)', 'triceps', '', 'cable'),
+    _e('Tricep Pushdown (Reverse Grip)', 'triceps', '', 'cable'),
     _e('Tricep Overhead Extension', 'triceps', '', 'dumbbell'),
-    _e('Overhead Extension', 'triceps', '', 'cable'),
+    _e('Overhead Extension (Cable)', 'triceps', '', 'cable'),
+    _e('Overhead Extension (Rope)', 'triceps', '', 'cable'),
     _e('Skull Crusher', 'triceps', '', 'barbell'),
+    _e('Skull Crusher (EZ-Bar)', 'triceps', '', 'barbell'),
+    _e('Skull Crusher (Dumbbell)', 'triceps', '', 'dumbbell'),
     _e('Close-Grip Bench Press', 'triceps', 'chest', 'barbell'),
+    _e('JM Press', 'triceps', '', 'barbell'),
     _e('Tricep Kickback', 'triceps', '', 'dumbbell'),
+    _e('Tricep Kickback (Cable)', 'triceps', '', 'cable'),
     _e('Bench Dips', 'triceps', '', 'bodyweight', 'reps_only'),
+    _e('Dips (Triceps)', 'triceps', 'chest', 'bodyweight', 'reps_only'),
     _e('Single Arm Tricep Pushdown', 'triceps', '', 'cable'),
+    _e('Machine Tricep Extension', 'triceps', '', 'machine'),
+    _e('Tate Press', 'triceps', '', 'dumbbell'),
+
+    // ═══ FOREARMS ═══
+    _e('Wrist Curl', 'forearms', '', 'barbell'),
+    _e('Reverse Wrist Curl', 'forearms', '', 'barbell'),
+    _e('Dumbbell Wrist Curl', 'forearms', '', 'dumbbell'),
+    _e('Dumbbell Reverse Wrist Curl', 'forearms', '', 'dumbbell'),
+    _e('Farmer\'s Walk', 'forearms', 'core', 'other', 'time_only'),
+    _e('Dead Hang', 'forearms', 'back', 'bodyweight', 'time_only'),
+    _e('Plate Pinch', 'forearms', '', 'other', 'time_only'),
 
     // ═══ CORE ═══
     _e('Crunch', 'core', '', 'bodyweight', 'reps_only'),
     _e('Crunches', 'core', '', 'bodyweight', 'reps_only'),
+    _e('Decline Crunch', 'core', '', 'bodyweight', 'reps_only'),
     _e('Plank', 'core', '', 'bodyweight', 'time_only'),
+    _e('Side Plank', 'core', '', 'bodyweight', 'time_only'),
     _e('Hanging Leg Raise', 'core', '', 'bodyweight', 'reps_only'),
+    _e('Hanging Knee Raise', 'core', '', 'bodyweight', 'reps_only'),
     _e('Lying Leg Raise', 'core', '', 'bodyweight', 'reps_only'),
-    _e('Leg Raises', 'core', '', 'bodyweight', 'reps_only'),
+    _e('Captain\'s Chair Leg Raise', 'core', '', 'bodyweight', 'reps_only'),
     _e('Russian Twist', 'core', '', 'bodyweight', 'reps_only'),
+    _e('Weighted Russian Twist', 'core', '', 'dumbbell'),
     _e('Ab Wheel Rollout', 'core', '', 'bodyweight', 'reps_only'),
     _e('Cable Woodchopper', 'core', '', 'cable'),
+    _e('Cable Crunch', 'core', '', 'cable'),
+    _e('Machine Crunch', 'core', '', 'machine'),
     _e('Sit-Up', 'core', '', 'bodyweight', 'reps_only'),
+    _e('Decline Sit-Up', 'core', '', 'bodyweight', 'reps_only'),
+    _e('Bicycle Crunch', 'core', '', 'bodyweight', 'reps_only'),
+    _e('V-Up', 'core', '', 'bodyweight', 'reps_only'),
+    _e('Flutter Kicks', 'core', '', 'bodyweight', 'time_only'),
+    _e('Dragon Flag', 'core', '', 'bodyweight', 'reps_only'),
 
-    // ═══ CARDIO ═══
+    // ═══ CARDIO & FULL BODY ═══
     _e('Running', 'cardio', '', 'none', 'distance_time'),
+    _e('Treadmill Running', 'cardio', '', 'machine', 'distance_time'),
     _e('Cycling', 'cardio', '', 'none', 'distance_time'),
+    _e('Stationary Bike', 'cardio', '', 'machine', 'distance_time'),
     _e('Rowing', 'cardio', '', 'machine', 'distance_time'),
     _e('Stair Stepper', 'cardio', '', 'machine', 'time_only'),
     _e('Elliptical', 'cardio', '', 'machine', 'time_only'),
-    _e('Burpees', 'cardio', '', 'bodyweight', 'reps_only'),
-    _e('Kettlebell Swing', 'cardio', '', 'bodyweight'),
+    _e('SkiErg', 'cardio', '', 'machine', 'distance_time'),
+    _e('Burpees', 'cardio', 'core', 'bodyweight', 'reps_only'),
+    _e('Kettlebell Swing', 'cardio', 'hamstrings', 'kettlebell'),
+    _e('Turkish Get-Up', 'cardio', 'core', 'kettlebell'),
     _e('Jump Rope', 'cardio', '', 'none', 'time_only'),
+    _e('Battle Ropes', 'cardio', 'shoulders', 'other', 'time_only'),
+    _e('Box Jumps', 'cardio', 'legs', 'other', 'reps_only'),
+    _e('Sled Push', 'cardio', 'legs', 'other', 'distance_time'),
+    _e('Sled Pull', 'cardio', 'back', 'other', 'distance_time'),
+
+    // ═══ OLYMPIC LIFTING ═══
+    _e('Clean and Jerk', 'legs', 'shoulders', 'barbell'),
+    _e('Power Clean', 'legs', 'back', 'barbell'),
+    _e('Hang Clean', 'legs', 'back', 'barbell'),
+    _e('Snatch', 'legs', 'shoulders', 'barbell'),
+    _e('Power Snatch', 'legs', 'shoulders', 'barbell'),
+    _e('Hang Snatch', 'legs', 'shoulders', 'barbell'),
+    _e('Push Jerk', 'shoulders', 'legs', 'barbell'),
+    _e('Split Jerk', 'shoulders', 'legs', 'barbell'),
   ];
 
-  await db.batch((batch) {
-    batch.insertAll(db.exercises, exercises);
-  });
+  final missingExercises = exercises.where((e) => !existingNames.contains(e.name.value)).toList();
+
+  if (missingExercises.isNotEmpty) {
+    await db.batch((batch) {
+      batch.insertAll(db.exercises, missingExercises);
+    });
+  }
 }
 
 ExercisesCompanion _e(

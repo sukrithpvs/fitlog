@@ -11,6 +11,7 @@ import '../../../core/utils/date_formatter.dart';
 import '../../../shared/widgets/custom_charts.dart';
 import 'body_metrics_screen.dart';
 import 'muscle_progress_screen.dart';
+import 'widgets/muscle_recovery_card.dart';
 
 // ─── Stats Provider (real DB data) ───
 final workoutStatsProvider = StreamProvider<Map<String, dynamic>>((ref) {
@@ -152,6 +153,52 @@ final muscleDistributionProvider = StreamProvider<Map<String, int>>((ref) {
   });
 });
 
+// ─── Muscle Recovery Provider ───
+final muscleRecoveryProvider = StreamProvider<Map<String, double>>((ref) {
+  final db = ref.watch(databaseProvider);
+  return (db.select(db.workouts)
+        ..where((w) => w.isTemplate.equals(false))
+        ..orderBy([(w) => OrderingTerm.desc(w.startTime)]))
+      .watch()
+      .asyncMap((workouts) async {
+    final lastTrained = <String, DateTime>{};
+
+    for (final workout in workouts) {
+      final sets = await db.getSetsForWorkout(workout.id);
+      final exerciseIds = sets.map((s) => s.exerciseId).toSet();
+
+      for (final exerciseId in exerciseIds) {
+        try {
+          final exercise = await (db.select(db.exercises)
+                ..where((e) => e.id.equals(exerciseId)))
+              .getSingleOrNull();
+
+          if (exercise != null) {
+            final muscle = exercise.primaryMuscle;
+            if (!lastTrained.containsKey(muscle)) {
+              lastTrained[muscle] = workout.startTime;
+            } else if (workout.startTime.isAfter(lastTrained[muscle]!)) {
+              lastTrained[muscle] = workout.startTime;
+            }
+          }
+        } catch (_) {}
+      }
+    }
+
+    final recovery = <String, double>{};
+    final now = DateTime.now();
+    for (final entry in lastTrained.entries) {
+      final hoursElapsed = now.difference(entry.value).inHours.toDouble();
+      // Assume 72 hours for 100% recovery
+      double percent = hoursElapsed / 72.0;
+      if (percent > 1.0) percent = 1.0;
+      recovery[entry.key] = percent;
+    }
+
+    return recovery;
+  });
+});
+
 // ─── Analytics Screen ───
 class AnalyticsTabScreen extends ConsumerWidget {
   const AnalyticsTabScreen({super.key});
@@ -202,78 +249,115 @@ class AnalyticsTabScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: statsAsync.when(
-        data: (stats) {
-
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ─── Stats Cards ───
-                Row(
-                  children: [
-                    Expanded(
-                      child: _StatCard(
-                        title: 'Total Workouts',
-                        value: '${stats['totalWorkouts']}',
-                        icon: Icons.fitness_center,
-                        color: AppColors.accent,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _StatCard(
-                        title: 'This Week',
-                        value: '${stats['thisWeek']}',
-                        icon: Icons.calendar_today,
-                        color: AppColors.success,
-                      ),
-                    ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: isDark
+                ? [
+                    AppColors.darkBg.withValues(alpha: 0.8),
+                    AppColors.darkSurface,
+                  ]
+                : [
+                    AppColors.lightBg,
+                    AppColors.lightSurface,
                   ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _StatCard(
-                        title: 'This Month',
-                        value: '${stats['thisMonth']}',
-                        icon: Icons.calendar_month,
-                        color: AppColors.warning,
-                      ),
+          ),
+        ),
+        child: statsAsync.when(
+          data: (stats) {
+            return SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ─── Header ───
+                  Text(
+                    'Overview',
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: -0.5,
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _StatCard(
-                        title: 'Total Volume',
-                        value: _formatVolume(stats['totalVolume'] as double),
-                        icon: Icons.trending_up,
-                        color: AppColors.info,
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  // ─── Stats Cards ───
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _StatCard(
+                          title: 'Total Workouts',
+                          value: stats['totalWorkouts'],
+                          icon: Icons.fitness_center,
+                          color: AppColors.accent,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _StatCard(
+                          title: 'This Week',
+                          value: stats['thisWeek'],
+                          icon: Icons.local_fire_department,
+                          color: AppColors.error, // vibrant red/orange
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _StatCard(
+                          title: 'This Month',
+                          value: stats['thisMonth'],
+                          icon: Icons.calendar_month,
+                          color: AppColors.warning,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _StatCard(
+                          title: 'Total Volume',
+                          value: stats['totalVolume'],
+                          formatter: 'kg',
+                          icon: Icons.trending_up,
+                          color: AppColors.info,
+                        ),
+                      ),
+                    ],
+                  ),
 
-                const SizedBox(height: 28),
+                const SizedBox(height: 36),
 
                 // ─── Volume Over Time Chart ───
-                Text(
-                  'VOLUME PER WORKOUT',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    letterSpacing: 1.2,
-                    fontWeight: FontWeight.w700,
-                  ),
+                _SectionHeader(
+                  title: 'Volume Progress',
+                  icon: Icons.insights,
+                  color: AppColors.info,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-                    borderRadius: BorderRadius.circular(14),
+                    gradient: LinearGradient(
+                      colors: isDark 
+                        ? [AppColors.darkSurface, AppColors.darkBg]
+                        : [AppColors.lightSurface, Colors.white],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
+                      )
+                    ],
                     border: Border.all(
-                      color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-                      width: 0.5,
+                      color: theme.dividerColor.withValues(alpha: 0.5),
+                      width: 1,
                     ),
                   ),
                   child: volumeAsync.when(
@@ -285,10 +369,10 @@ class AnalyticsTabScreen extends ConsumerWidget {
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.show_chart, size: 40, color: theme.colorScheme.outline),
-                                const SizedBox(height: 8),
+                                Icon(Icons.show_chart, size: 48, color: theme.colorScheme.outline.withValues(alpha: 0.5)),
+                                const SizedBox(height: 12),
                                 Text('Complete workouts to see volume trends',
-                                    style: theme.textTheme.bodySmall),
+                                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.outline)),
                               ],
                             ),
                           ),
@@ -307,25 +391,36 @@ class AnalyticsTabScreen extends ConsumerWidget {
                   ),
                 ),
 
-                const SizedBox(height: 28),
+                const SizedBox(height: 36),
 
                 // ─── Duration Over Time Chart ───
-                Text(
-                  'WORKOUT DURATION',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    letterSpacing: 1.2,
-                    fontWeight: FontWeight.w700,
-                  ),
+                _SectionHeader(
+                  title: 'Workout Duration',
+                  icon: Icons.timer_outlined,
+                  color: AppColors.warning,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-                    borderRadius: BorderRadius.circular(14),
+                    gradient: LinearGradient(
+                      colors: isDark 
+                        ? [AppColors.darkSurface, AppColors.darkBg]
+                        : [AppColors.lightSurface, Colors.white],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
+                      )
+                    ],
                     border: Border.all(
-                      color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-                      width: 0.5,
+                      color: theme.dividerColor.withValues(alpha: 0.5),
+                      width: 1,
                     ),
                   ),
                   child: durationAsync.when(
@@ -359,40 +454,51 @@ class AnalyticsTabScreen extends ConsumerWidget {
                   ),
                 ),
 
-                const SizedBox(height: 28),
+                const SizedBox(height: 36),
 
-                // ─── Weekly Frequency Chart ───
-                Text(
-                  'WORKOUTS PER WEEK',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    letterSpacing: 1.2,
-                    fontWeight: FontWeight.w700,
-                  ),
+                // ─── Frequency Chart ───
+                _SectionHeader(
+                  title: 'Workout Frequency',
+                  icon: Icons.calendar_month,
+                  color: AppColors.success,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-                    borderRadius: BorderRadius.circular(14),
+                    gradient: LinearGradient(
+                      colors: isDark 
+                        ? [AppColors.darkSurface, AppColors.darkBg]
+                        : [AppColors.lightSurface, Colors.white],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
+                      )
+                    ],
                     border: Border.all(
-                      color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-                      width: 0.5,
+                      color: theme.dividerColor.withValues(alpha: 0.5),
+                      width: 1,
                     ),
                   ),
                   child: weeklyAsync.when(
                     data: (data) {
-                      if (data.every((d) => d.value == 0)) {
+                      if (data.isEmpty) {
                         return SizedBox(
                           height: 180,
                           child: Center(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.bar_chart, size: 40, color: theme.colorScheme.outline),
-                                const SizedBox(height: 8),
+                                Icon(Icons.bar_chart, size: 48, color: theme.colorScheme.outline.withValues(alpha: 0.5)),
+                                const SizedBox(height: 12),
                                 Text('Start working out to track frequency',
-                                    style: theme.textTheme.bodySmall),
+                                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.outline)),
                               ],
                             ),
                           ),
@@ -411,25 +517,36 @@ class AnalyticsTabScreen extends ConsumerWidget {
                   ),
                 ),
 
-                const SizedBox(height: 28),
+                const SizedBox(height: 36),
 
                 // ─── Muscle Distribution ───
-                Text(
-                  'MUSCLE DISTRIBUTION (LAST 30 DAYS)',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    letterSpacing: 1.2,
-                    fontWeight: FontWeight.w700,
-                  ),
+                _SectionHeader(
+                  title: 'Muscle Distribution (30 Days)',
+                  icon: Icons.pie_chart_outline,
+                  color: AppColors.accent,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-                    borderRadius: BorderRadius.circular(14),
+                    gradient: LinearGradient(
+                      colors: isDark 
+                        ? [AppColors.darkSurface, AppColors.darkBg]
+                        : [AppColors.lightSurface, Colors.white],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
+                      )
+                    ],
                     border: Border.all(
-                      color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-                      width: 0.5,
+                      color: theme.dividerColor.withValues(alpha: 0.5),
+                      width: 1,
                     ),
                   ),
                   child: muscleAsync.when(
@@ -454,36 +571,46 @@ class AnalyticsTabScreen extends ConsumerWidget {
                       final sorted = distribution.entries.toList()
                         ..sort((a, b) => b.value.compareTo(a.value));
 
-                      return Column(
+                        return Column(
                         children: sorted.map((entry) {
                           final percentage = entry.value / total;
                           final muscleKey = entry.key.toLowerCase().replaceAll(' ', '');
                           final color = AppColors.muscleColors[muscleKey] ?? AppColors.accent;
 
                           return Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.only(bottom: 16),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text(entry.key, style: theme.textTheme.bodyMedium),
+                                    Text(entry.key, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
                                     Text(
                                       '${(percentage * 100).toInt()}% (${entry.value})',
-                                      style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold),
+                                      style: theme.textTheme.labelMedium?.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                        color: color,
+                                      ),
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 4),
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(4),
-                                  child: LinearProgressIndicator(
-                                    value: percentage,
-                                    minHeight: 8,
-                                    backgroundColor: theme.colorScheme.outline.withValues(alpha: 0.1),
-                                    valueColor: AlwaysStoppedAnimation(color),
-                                  ),
+                                const SizedBox(height: 8),
+                                TweenAnimationBuilder<double>(
+                                  tween: Tween<double>(begin: 0, end: percentage),
+                                  duration: const Duration(milliseconds: 1200),
+                                  curve: Curves.easeOutQuart,
+                                  builder: (context, val, _) {
+                                    return ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: LinearProgressIndicator(
+                                        value: val,
+                                        minHeight: 10,
+                                        backgroundColor: theme.colorScheme.outline.withValues(alpha: 0.1),
+                                        valueColor: AlwaysStoppedAnimation(color),
+                                      ),
+                                    );
+                                  },
                                 ),
                               ],
                             ),
@@ -499,7 +626,9 @@ class AnalyticsTabScreen extends ConsumerWidget {
                   ),
                 ),
 
-                const SizedBox(height: 32),
+                const SizedBox(height: 36),
+                const MuscleRecoveryCard(),
+                const SizedBox(height: 60),
               ],
             ),
           );
@@ -507,27 +636,55 @@ class AnalyticsTabScreen extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, stack) => Center(child: Text('Error: $err')),
       ),
-    );
-  }
-
-  String _formatVolume(double volume) {
-    if (volume >= 1000) {
-      return '${(volume / 1000).toStringAsFixed(1)}k kg';
-    }
-    return '${volume.toStringAsFixed(0)} kg';
+    ));
   }
 }
 
-// ─── Stat Card Widget ───
+// ─── Section Header ───
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final Color color;
+
+  const _SectionHeader({required this.title, required this.icon, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.15),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: color, size: 20),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          title,
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.5,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Animated Premium Stat Card Widget ───
 class _StatCard extends StatelessWidget {
   final String title;
-  final String value;
+  final num value;
+  final String formatter;
   final IconData icon;
   final Color color;
 
   const _StatCard({
     required this.title,
     required this.value,
+    this.formatter = '',
     required this.icon,
     required this.color,
   });
@@ -538,14 +695,35 @@ class _StatCard extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-          width: 0.5,
+        gradient: LinearGradient(
+          colors: isDark 
+            ? [
+                color.withValues(alpha: 0.15),
+                color.withValues(alpha: 0.05),
+              ]
+            : [
+                color.withValues(alpha: 0.1),
+                color.withValues(alpha: 0.02),
+              ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: color.withValues(alpha: 0.2),
+          width: 1.5,
+        ),
+        boxShadow: isDark
+            ? [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.1),
+                  blurRadius: 15,
+                  spreadRadius: -5,
+                )
+              ]
+            : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -553,33 +731,63 @@ class _StatCard extends StatelessWidget {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(6),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(8),
+                  color: color.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.3),
+                      blurRadius: 8,
+                      spreadRadius: -2,
+                    )
+                  ],
                 ),
-                child: Icon(icon, color: color, size: 18),
+                child: Icon(icon, color: color, size: 20),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   title,
-                  style: theme.textTheme.labelSmall,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.5,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          Text(
-            value,
-            style: theme.textTheme.headlineMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
+          const SizedBox(height: 16),
+          TweenAnimationBuilder<double>(
+            tween: Tween<double>(begin: 0, end: value.toDouble()),
+            duration: const Duration(milliseconds: 1500),
+            curve: Curves.easeOutQuart,
+            builder: (context, animValue, child) {
+              String displayValue;
+              if (formatter == 'kg') {
+                if (animValue >= 1000) {
+                  displayValue = '${(animValue / 1000).toStringAsFixed(1)}k kg';
+                } else {
+                  displayValue = '${animValue.toStringAsFixed(0)} kg';
+                }
+              } else {
+                displayValue = animValue.toInt().toString();
+              }
+
+              return Text(
+                displayValue,
+                style: theme.textTheme.headlineLarge?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  color: theme.colorScheme.onSurface,
+                  letterSpacing: -0.5,
+                ),
+              );
+            },
           ),
         ],
       ),
     );
   }
 }
+

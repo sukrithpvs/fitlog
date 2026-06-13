@@ -8,9 +8,11 @@ import 'app.dart';
 import 'core/database/database_provider.dart';
 import 'core/database/seed_data.dart';
 import 'core/database/seed_routines.dart';
+import 'core/utils/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await NotificationService().init();
 
   // Initialize the database and seed default exercises and routines
   final db = getDatabase();

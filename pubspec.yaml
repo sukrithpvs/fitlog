@@ -43,6 +43,7 @@ dependencies:
   
   # File Picker for imports
   file_picker: ^8.1.4
+  flutter_local_notifications: ^22.0.0
 
 dev_dependencies:
   flutter_test:
