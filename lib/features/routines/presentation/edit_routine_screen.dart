@@ -9,6 +9,12 @@ import '../../../core/theme/app_colors.dart';
 import '../../exercises/presentation/widgets/exercise_picker_modal.dart';
 import '../providers/routine_providers.dart';
 
+class RoutineExercise {
+  final Exercise exercise;
+  int sets;
+  RoutineExercise(this.exercise, {this.sets = 3});
+}
+
 class EditRoutineScreen extends ConsumerStatefulWidget {
   final Workout routine;
   
@@ -21,7 +27,7 @@ class EditRoutineScreen extends ConsumerStatefulWidget {
 class _EditRoutineScreenState extends ConsumerState<EditRoutineScreen> {
   late TextEditingController _titleController;
   late TextEditingController _notesController;
-  List<Exercise> _selectedExercises = [];
+  List<RoutineExercise> _selectedExercises = [];
   bool _isLoading = true;
   bool _isSaving = false;
 
@@ -37,19 +43,20 @@ class _EditRoutineScreenState extends ConsumerState<EditRoutineScreen> {
     final db = ref.read(databaseProvider);
     final sets = await db.getSetsForWorkout(widget.routine.id);
     
-    // Get unique exercises in order
-    final exerciseIds = <int>[];
+    // Get unique exercises and count their sets
+    final exerciseSetCounts = <int, int>{};
     for (final set in sets) {
-      if (!exerciseIds.contains(set.exerciseId)) {
-        exerciseIds.add(set.exerciseId);
+      if (!exerciseSetCounts.containsKey(set.exerciseId)) {
+        exerciseSetCounts[set.exerciseId] = 0;
       }
+      exerciseSetCounts[set.exerciseId] = exerciseSetCounts[set.exerciseId]! + 1;
     }
     
-    final exercises = <Exercise>[];
-    for (final id in exerciseIds) {
+    final exercises = <RoutineExercise>[];
+    for (final id in exerciseSetCounts.keys) {
       try {
         final exercise = await db.getExerciseById(id);
-        exercises.add(exercise);
+        exercises.add(RoutineExercise(exercise, sets: exerciseSetCounts[id]!));
       } catch (_) {}
     }
     
@@ -167,24 +174,65 @@ class _EditRoutineScreenState extends ConsumerState<EditRoutineScreen> {
                         });
                       },
                       itemBuilder: (context, index) {
-                        final exercise = _selectedExercises[index];
+                        final routineExercise = _selectedExercises[index];
+                        final exercise = routineExercise.exercise;
                         return Card(
                           key: ValueKey(exercise.id),
                           margin: const EdgeInsets.only(bottom: 8),
-                          child: ListTile(
-                            leading: Icon(
-                              Icons.drag_handle,
-                              color: theme.colorScheme.outline,
-                            ),
-                            title: Text(exercise.name),
-                            subtitle: Text(exercise.primaryMuscle),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.close, size: 20),
-                              onPressed: () {
-                                setState(() {
-                                  _selectedExercises.removeAt(index);
-                                });
-                              },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: ListTile(
+                              leading: Icon(
+                                Icons.drag_handle,
+                                color: theme.colorScheme.outline,
+                              ),
+                              title: Text(exercise.name),
+                              subtitle: Row(
+                                children: [
+                                  Text(exercise.primaryMuscle),
+                                  const Spacer(),
+                                  // Sets counter
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(Icons.remove_circle_outline, size: 20),
+                                        onPressed: () {
+                                          if (routineExercise.sets > 1) {
+                                            setState(() => routineExercise.sets--);
+                                          }
+                                        },
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        '${routineExercise.sets} sets',
+                                        style: theme.textTheme.bodyMedium?.copyWith(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      IconButton(
+                                        icon: const Icon(Icons.add_circle_outline, size: 20),
+                                        onPressed: () {
+                                          setState(() => routineExercise.sets++);
+                                        },
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.close, size: 20),
+                                onPressed: () {
+                                  setState(() {
+                                    _selectedExercises.removeAt(index);
+                                  });
+                                },
+                              ),
                             ),
                           ),
                         );
@@ -237,9 +285,9 @@ class _EditRoutineScreenState extends ConsumerState<EditRoutineScreen> {
       builder: (context) => const ExercisePickerModal(),
     );
 
-    if (exercise != null && !_selectedExercises.contains(exercise)) {
+    if (exercise != null && !_selectedExercises.any((e) => e.exercise.id == exercise.id)) {
       setState(() {
-        _selectedExercises.add(exercise);
+        _selectedExercises.add(RoutineExercise(exercise));
       });
     }
   }
@@ -282,17 +330,19 @@ class _EditRoutineScreenState extends ConsumerState<EditRoutineScreen> {
       // Delete all existing sets
       await db.deleteSetsForWorkout(widget.routine.id);
 
-      // Add new exercises as template sets (3 sets each)
+      // Add new exercises as template sets
+      int setOrderCounter = 0;
       for (int exerciseIndex = 0; exerciseIndex < _selectedExercises.length; exerciseIndex++) {
-        final exercise = _selectedExercises[exerciseIndex];
-        for (int setNum = 0; setNum < 3; setNum++) {
+        final routineExercise = _selectedExercises[exerciseIndex];
+        final exercise = routineExercise.exercise;
+        for (int setNum = 0; setNum < routineExercise.sets; setNum++) {
           await db.insertWorkoutSet(
             WorkoutSetsCompanion.insert(
               uuid: uuid.v4(),
               workoutId: widget.routine.id,
               exerciseId: exercise.id,
               exerciseName: exercise.name,
-              setOrder: (exerciseIndex * 3) + setNum,
+              setOrder: setOrderCounter++,
             ),
           );
         }

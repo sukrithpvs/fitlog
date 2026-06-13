@@ -100,13 +100,23 @@ class ExerciseDetailScreen extends ConsumerWidget {
   }
 }
 
-class _SummaryTab extends ConsumerWidget {
+class _SummaryTab extends ConsumerStatefulWidget {
   final Exercise exercise;
 
   const _SummaryTab({required this.exercise});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_SummaryTab> createState() => _SummaryTabState();
+}
+
+enum ChartType { maxWeight, volume, est1RM }
+
+class _SummaryTabState extends ConsumerState<_SummaryTab> {
+  ChartType _selectedChart = ChartType.maxWeight;
+
+  @override
+  Widget build(BuildContext context) {
+    final exercise = widget.exercise;
     final theme = Theme.of(context);
     final weightUnit = ref.watch(weightUnitProvider);
     final muscleGroup = MuscleGroup.fromString(exercise.primaryMuscle);
@@ -163,6 +173,7 @@ class _SummaryTab extends ConsumerWidget {
   }
 
   Widget _buildProgressAndPRs(BuildContext context, WidgetRef ref, ThemeData theme, String weightUnit) {
+    final exercise = widget.exercise;
     final historyAsync = ref.watch(exerciseHistoryGroupedProvider(exercise.id));
     
     return historyAsync.when(
@@ -187,6 +198,29 @@ class _SummaryTab extends ConsumerWidget {
         // Chart Data Extraction
         final maxWeightData = _getMaxWeightData(allSets, weightUnit);
         final volumeData = _getVolumeData(allSets);
+        final rmData = _get1RMData(allSets, weightUnit);
+        
+        List<ChartDataPoint> activeData = [];
+        String chartTitle = '';
+        Color chartColor = AppColors.accent;
+
+        switch (_selectedChart) {
+          case ChartType.maxWeight:
+            activeData = maxWeightData;
+            chartTitle = 'MAX WEIGHT OVER TIME';
+            chartColor = AppColors.error;
+            break;
+          case ChartType.volume:
+            activeData = volumeData;
+            chartTitle = 'VOLUME PER SESSION';
+            chartColor = AppColors.warning;
+            break;
+          case ChartType.est1RM:
+            activeData = rmData;
+            chartTitle = 'ESTIMATED 1RM';
+            chartColor = AppColors.success;
+            break;
+        }
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -230,10 +264,30 @@ class _SummaryTab extends ConsumerWidget {
             ],
 
             // Progress Charts
-            if (maxWeightData.length >= 2) ...[
+            if (activeData.length >= 2) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: SegmentedButton<ChartType>(
+                  segments: const [
+                    ButtonSegment(value: ChartType.maxWeight, label: Text('Max Weight')),
+                    ButtonSegment(value: ChartType.volume, label: Text('Volume')),
+                    ButtonSegment(value: ChartType.est1RM, label: Text('1RM')),
+                  ],
+                  selected: {_selectedChart},
+                  onSelectionChanged: (Set<ChartType> newSelection) {
+                    setState(() {
+                      _selectedChart = newSelection.first;
+                    });
+                  },
+                  style: ButtonStyle(
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: Text('MAX WEIGHT OVER TIME', style: theme.textTheme.labelSmall),
+                child: Text(chartTitle, style: theme.textTheme.labelSmall),
               ),
               Container(
                 margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -246,28 +300,7 @@ class _SummaryTab extends ConsumerWidget {
                     width: 0.5,
                   ),
                 ),
-                child: SmoothLineChart(data: maxWeightData, height: 200, color: AppColors.accent),
-              ),
-              const SizedBox(height: 24),
-            ],
-            
-            if (volumeData.length >= 2) ...[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: Text('VOLUME PER SESSION', style: theme.textTheme.labelSmall),
-              ),
-              Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: theme.brightness == Brightness.dark ? AppColors.darkSurface : AppColors.lightSurface,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: theme.brightness == Brightness.dark ? AppColors.darkBorder : AppColors.lightBorder,
-                    width: 0.5,
-                  ),
-                ),
-                child: SmoothLineChart(data: volumeData, height: 200, color: AppColors.info),
+                child: SmoothLineChart(data: activeData, height: 200, color: chartColor),
               ),
               const SizedBox(height: 24),
             ],
@@ -308,6 +341,25 @@ class _SummaryTab extends ConsumerWidget {
     return sorted.map((e) => ChartDataPoint(
       label: DateFormatter.shortDate(e.key),
       value: e.value,
+    )).toList();
+  }
+
+  List<ChartDataPoint> _get1RMData(List<WorkoutSet> sets, String unit) {
+    final Map<DateTime, double> daily1RM = {};
+    for (final set in sets) {
+      if (set.weight == null || set.reps == null) continue;
+      final est1RM = OneRmCalculator.epley(set.weight!, set.reps!);
+      if (est1RM == null) continue;
+      final date = set.completedAt ?? DateTime.now();
+      final dateKey = DateTime(date.year, date.month, date.day);
+      if (!daily1RM.containsKey(dateKey) || est1RM > daily1RM[dateKey]!) {
+        daily1RM[dateKey] = est1RM;
+      }
+    }
+    final sorted = daily1RM.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
+    return sorted.map((e) => ChartDataPoint(
+      label: DateFormatter.shortDate(e.key),
+      value: unit == 'lbs' ? WeightConverter.toLbs(e.value) : e.value,
     )).toList();
   }
 }

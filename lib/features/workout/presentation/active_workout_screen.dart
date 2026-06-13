@@ -10,6 +10,7 @@ import '../../../core/database/database_provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../exercises/presentation/widgets/exercise_picker_modal.dart';
+import '../../../core/utils/pr_detector.dart';
 import 'widgets/plate_calculator_modal.dart';
 
 class ActiveWorkoutScreen extends ConsumerStatefulWidget {
@@ -658,10 +659,25 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
     final db = ref.read(databaseProvider);
     final newCompleted = !set.isCompleted;
     
+    bool isPR = false;
+    
+    if (newCompleted && set.weight != null && set.reps != null) {
+      final previousSets = await db.getSetsForExercise(set.exerciseId);
+      final setWithCompletion = set.copyWith(
+        isCompleted: true,
+        completedAt: Value(DateTime.now()),
+      );
+      final prs = await PRDetector.detectPRs(setWithCompletion, previousSets);
+      if (prs.isNotEmpty) {
+        isPR = true;
+      }
+    }
+    
     await db.update(db.workoutSets).replace(
       set.copyWith(
         isCompleted: newCompleted,
         completedAt: Value(newCompleted ? DateTime.now() : null),
+        isPersonalRecord: isPR,
       ),
     );
 
@@ -793,25 +809,9 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
   Future<String> _getPreviousPerformance(int exerciseId, int setOrder) async {
     try {
       final db = ref.read(databaseProvider);
-      final allSets = await db.select(db.workoutSets).get();
-      final previousSets = allSets.where((s) => 
-        s.exerciseId == exerciseId &&
-        s.workoutId != _workoutId &&
-        s.isCompleted &&
-        s.setOrder == setOrder &&
-        s.weight != null &&
-        s.reps != null
-      ).toList();
-      
-      previousSets.sort((a, b) {
-        if (a.completedAt == null) return 1;
-        if (b.completedAt == null) return -1;
-        return b.completedAt!.compareTo(a.completedAt!);
-      });
-
-      if (previousSets.isNotEmpty) {
-        final prev = previousSets.first;
-        return '${prev.weight!.toStringAsFixed(0)}kg × ${prev.reps}';
+      final prevSet = await db.getPreviousSetPerformance(exerciseId, setOrder);
+      if (prevSet != null && prevSet.workoutId != _workoutId) {
+        return '${prevSet.weight!.toStringAsFixed(0)}kg × ${prevSet.reps}';
       }
     } catch (e) {
       // Ignore errors

@@ -8,7 +8,9 @@ import '../../../shared/providers/settings_provider.dart';
 import '../../../core/database/database_provider.dart';
 import '../../routines/utils/routine_share.dart';
 import '../utils/csv_export.dart';
+import '../utils/csv_export.dart';
 import '../utils/data_import.dart';
+import 'package:go_router/go_router.dart';
 
 class SettingsTabScreen extends ConsumerWidget {
   const SettingsTabScreen({super.key});
@@ -244,7 +246,7 @@ class SettingsTabScreen extends ConsumerWidget {
         await db.clearAllData();
         
         if (context.mounted) {
-          Navigator.pop(context); // Close loading dialog
+          Navigator.of(context, rootNavigator: true).pop(); // Close loading dialog
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('✓ All data cleared successfully'),
@@ -252,10 +254,11 @@ class SettingsTabScreen extends ConsumerWidget {
               duration: Duration(seconds: 3),
             ),
           );
+          context.go('/');
         }
       } catch (e) {
         if (context.mounted) {
-          Navigator.pop(context); // Close loading dialog
+          Navigator.of(context, rootNavigator: true).pop(); // Close loading dialog
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Failed to clear data: $e'),

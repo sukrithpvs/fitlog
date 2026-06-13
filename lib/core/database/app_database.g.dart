@@ -1682,6 +1682,21 @@ class $WorkoutSetsTable extends WorkoutSets
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _isPersonalRecordMeta = const VerificationMeta(
+    'isPersonalRecord',
+  );
+  @override
+  late final GeneratedColumn<bool> isPersonalRecord = GeneratedColumn<bool>(
+    'is_personal_record',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_personal_record" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1699,6 +1714,7 @@ class $WorkoutSetsTable extends WorkoutSets
     isCompleted,
     completedAt,
     supersetId,
+    isPersonalRecord,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1824,6 +1840,15 @@ class $WorkoutSetsTable extends WorkoutSets
         supersetId.isAcceptableOrUnknown(data['superset_id']!, _supersetIdMeta),
       );
     }
+    if (data.containsKey('is_personal_record')) {
+      context.handle(
+        _isPersonalRecordMeta,
+        isPersonalRecord.isAcceptableOrUnknown(
+          data['is_personal_record']!,
+          _isPersonalRecordMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1893,6 +1918,10 @@ class $WorkoutSetsTable extends WorkoutSets
         DriftSqlType.string,
         data['${effectivePrefix}superset_id'],
       ),
+      isPersonalRecord: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_personal_record'],
+      )!,
     );
   }
 
@@ -1918,6 +1947,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
   final bool isCompleted;
   final DateTime? completedAt;
   final String? supersetId;
+  final bool isPersonalRecord;
   const WorkoutSet({
     required this.id,
     required this.uuid,
@@ -1934,6 +1964,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
     required this.isCompleted,
     this.completedAt,
     this.supersetId,
+    required this.isPersonalRecord,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1967,6 +1998,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
     if (!nullToAbsent || supersetId != null) {
       map['superset_id'] = Variable<String>(supersetId);
     }
+    map['is_personal_record'] = Variable<bool>(isPersonalRecord);
     return map;
   }
 
@@ -1997,6 +2029,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
       supersetId: supersetId == null && nullToAbsent
           ? const Value.absent()
           : Value(supersetId),
+      isPersonalRecord: Value(isPersonalRecord),
     );
   }
 
@@ -2021,6 +2054,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
       isCompleted: serializer.fromJson<bool>(json['isCompleted']),
       completedAt: serializer.fromJson<DateTime?>(json['completedAt']),
       supersetId: serializer.fromJson<String?>(json['supersetId']),
+      isPersonalRecord: serializer.fromJson<bool>(json['isPersonalRecord']),
     );
   }
   @override
@@ -2042,6 +2076,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
       'isCompleted': serializer.toJson<bool>(isCompleted),
       'completedAt': serializer.toJson<DateTime?>(completedAt),
       'supersetId': serializer.toJson<String?>(supersetId),
+      'isPersonalRecord': serializer.toJson<bool>(isPersonalRecord),
     };
   }
 
@@ -2061,6 +2096,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
     bool? isCompleted,
     Value<DateTime?> completedAt = const Value.absent(),
     Value<String?> supersetId = const Value.absent(),
+    bool? isPersonalRecord,
   }) => WorkoutSet(
     id: id ?? this.id,
     uuid: uuid ?? this.uuid,
@@ -2081,6 +2117,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
     isCompleted: isCompleted ?? this.isCompleted,
     completedAt: completedAt.present ? completedAt.value : this.completedAt,
     supersetId: supersetId.present ? supersetId.value : this.supersetId,
+    isPersonalRecord: isPersonalRecord ?? this.isPersonalRecord,
   );
   WorkoutSet copyWithCompanion(WorkoutSetsCompanion data) {
     return WorkoutSet(
@@ -2113,6 +2150,9 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
       supersetId: data.supersetId.present
           ? data.supersetId.value
           : this.supersetId,
+      isPersonalRecord: data.isPersonalRecord.present
+          ? data.isPersonalRecord.value
+          : this.isPersonalRecord,
     );
   }
 
@@ -2133,7 +2173,8 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
           ..write('rpe: $rpe, ')
           ..write('isCompleted: $isCompleted, ')
           ..write('completedAt: $completedAt, ')
-          ..write('supersetId: $supersetId')
+          ..write('supersetId: $supersetId, ')
+          ..write('isPersonalRecord: $isPersonalRecord')
           ..write(')'))
         .toString();
   }
@@ -2155,6 +2196,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
     isCompleted,
     completedAt,
     supersetId,
+    isPersonalRecord,
   );
   @override
   bool operator ==(Object other) =>
@@ -2174,7 +2216,8 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
           other.rpe == this.rpe &&
           other.isCompleted == this.isCompleted &&
           other.completedAt == this.completedAt &&
-          other.supersetId == this.supersetId);
+          other.supersetId == this.supersetId &&
+          other.isPersonalRecord == this.isPersonalRecord);
 }
 
 class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
@@ -2193,6 +2236,7 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
   final Value<bool> isCompleted;
   final Value<DateTime?> completedAt;
   final Value<String?> supersetId;
+  final Value<bool> isPersonalRecord;
   const WorkoutSetsCompanion({
     this.id = const Value.absent(),
     this.uuid = const Value.absent(),
@@ -2209,6 +2253,7 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
     this.isCompleted = const Value.absent(),
     this.completedAt = const Value.absent(),
     this.supersetId = const Value.absent(),
+    this.isPersonalRecord = const Value.absent(),
   });
   WorkoutSetsCompanion.insert({
     this.id = const Value.absent(),
@@ -2226,6 +2271,7 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
     this.isCompleted = const Value.absent(),
     this.completedAt = const Value.absent(),
     this.supersetId = const Value.absent(),
+    this.isPersonalRecord = const Value.absent(),
   }) : uuid = Value(uuid),
        workoutId = Value(workoutId),
        exerciseId = Value(exerciseId),
@@ -2247,6 +2293,7 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
     Expression<bool>? isCompleted,
     Expression<DateTime>? completedAt,
     Expression<String>? supersetId,
+    Expression<bool>? isPersonalRecord,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -2264,6 +2311,7 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
       if (isCompleted != null) 'is_completed': isCompleted,
       if (completedAt != null) 'completed_at': completedAt,
       if (supersetId != null) 'superset_id': supersetId,
+      if (isPersonalRecord != null) 'is_personal_record': isPersonalRecord,
     });
   }
 
@@ -2283,6 +2331,7 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
     Value<bool>? isCompleted,
     Value<DateTime?>? completedAt,
     Value<String?>? supersetId,
+    Value<bool>? isPersonalRecord,
   }) {
     return WorkoutSetsCompanion(
       id: id ?? this.id,
@@ -2300,6 +2349,7 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
       isCompleted: isCompleted ?? this.isCompleted,
       completedAt: completedAt ?? this.completedAt,
       supersetId: supersetId ?? this.supersetId,
+      isPersonalRecord: isPersonalRecord ?? this.isPersonalRecord,
     );
   }
 
@@ -2351,6 +2401,9 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
     if (supersetId.present) {
       map['superset_id'] = Variable<String>(supersetId.value);
     }
+    if (isPersonalRecord.present) {
+      map['is_personal_record'] = Variable<bool>(isPersonalRecord.value);
+    }
     return map;
   }
 
@@ -2371,7 +2424,8 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
           ..write('rpe: $rpe, ')
           ..write('isCompleted: $isCompleted, ')
           ..write('completedAt: $completedAt, ')
-          ..write('supersetId: $supersetId')
+          ..write('supersetId: $supersetId, ')
+          ..write('isPersonalRecord: $isPersonalRecord')
           ..write(')'))
         .toString();
   }
@@ -4314,6 +4368,7 @@ typedef $$WorkoutSetsTableCreateCompanionBuilder =
       Value<bool> isCompleted,
       Value<DateTime?> completedAt,
       Value<String?> supersetId,
+      Value<bool> isPersonalRecord,
     });
 typedef $$WorkoutSetsTableUpdateCompanionBuilder =
     WorkoutSetsCompanion Function({
@@ -4332,6 +4387,7 @@ typedef $$WorkoutSetsTableUpdateCompanionBuilder =
       Value<bool> isCompleted,
       Value<DateTime?> completedAt,
       Value<String?> supersetId,
+      Value<bool> isPersonalRecord,
     });
 
 final class $$WorkoutSetsTableReferences
@@ -4444,6 +4500,11 @@ class $$WorkoutSetsTableFilterComposer
 
   ColumnFilters<String> get supersetId => $composableBuilder(
     column: $table.supersetId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isPersonalRecord => $composableBuilder(
+    column: $table.isPersonalRecord,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4568,6 +4629,11 @@ class $$WorkoutSetsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get isPersonalRecord => $composableBuilder(
+    column: $table.isPersonalRecord,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$WorkoutsTableOrderingComposer get workoutId {
     final $$WorkoutsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -4675,6 +4741,11 @@ class $$WorkoutSetsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<bool> get isPersonalRecord => $composableBuilder(
+    column: $table.isPersonalRecord,
+    builder: (column) => column,
+  );
+
   $$WorkoutsTableAnnotationComposer get workoutId {
     final $$WorkoutsTableAnnotationComposer composer = $composerBuilder(
       composer: this,
@@ -4765,6 +4836,7 @@ class $$WorkoutSetsTableTableManager
                 Value<bool> isCompleted = const Value.absent(),
                 Value<DateTime?> completedAt = const Value.absent(),
                 Value<String?> supersetId = const Value.absent(),
+                Value<bool> isPersonalRecord = const Value.absent(),
               }) => WorkoutSetsCompanion(
                 id: id,
                 uuid: uuid,
@@ -4781,6 +4853,7 @@ class $$WorkoutSetsTableTableManager
                 isCompleted: isCompleted,
                 completedAt: completedAt,
                 supersetId: supersetId,
+                isPersonalRecord: isPersonalRecord,
               ),
           createCompanionCallback:
               ({
@@ -4799,6 +4872,7 @@ class $$WorkoutSetsTableTableManager
                 Value<bool> isCompleted = const Value.absent(),
                 Value<DateTime?> completedAt = const Value.absent(),
                 Value<String?> supersetId = const Value.absent(),
+                Value<bool> isPersonalRecord = const Value.absent(),
               }) => WorkoutSetsCompanion.insert(
                 id: id,
                 uuid: uuid,
@@ -4815,6 +4889,7 @@ class $$WorkoutSetsTableTableManager
                 isCompleted: isCompleted,
                 completedAt: completedAt,
                 supersetId: supersetId,
+                isPersonalRecord: isPersonalRecord,
               ),
           withReferenceMapper: (p0) => p0
               .map(

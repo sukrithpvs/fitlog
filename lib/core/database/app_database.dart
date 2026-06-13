@@ -50,6 +50,7 @@ class WorkoutSets extends Table {
   BoolColumn get isCompleted => boolean().withDefault(const Constant(false))();
   DateTimeColumn get completedAt => dateTime().nullable()();
   TextColumn get supersetId => text().nullable()();
+  BoolColumn get isPersonalRecord => boolean().withDefault(const Constant(false))();
 }
 
 class RoutineFolders extends Table {
@@ -92,7 +93,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration {
@@ -111,6 +112,9 @@ class AppDatabase extends _$AppDatabase {
         }
         if (from < 3) {
           await m.addColumn(workoutSets, workoutSets.supersetId);
+        }
+        if (from < 4) {
+          await m.addColumn(workoutSets, workoutSets.isPersonalRecord);
         }
       },
     );
@@ -199,6 +203,20 @@ class AppDatabase extends _$AppDatabase {
           ..where((s) => s.exerciseId.equals(exerciseId))
           ..orderBy([(s) => OrderingTerm.desc(s.completedAt)]))
         .get();
+  }
+
+  Future<WorkoutSet?> getPreviousSetPerformance(int exerciseId, int setOrder) async {
+    final query = select(workoutSets)
+      ..where((s) =>
+          s.exerciseId.equals(exerciseId) &
+          s.setOrder.equals(setOrder) &
+          s.isCompleted.equals(true) &
+          s.weight.isNotNull() &
+          s.reps.isNotNull())
+      ..orderBy([(s) => OrderingTerm.desc(s.completedAt)])
+      ..limit(1);
+    
+    return await query.getSingleOrNull();
   }
 
   Future<int> insertWorkoutSet(WorkoutSetsCompanion set_) {

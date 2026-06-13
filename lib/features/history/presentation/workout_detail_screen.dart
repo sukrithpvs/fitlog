@@ -428,9 +428,17 @@ class WorkoutDetailScreen extends ConsumerWidget {
                   ),
                 ),
                 Expanded(
-                  child: Text(
-                    set.reps != null ? '${set.reps} reps' : '—',
-                    style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+                  child: Row(
+                    children: [
+                      Text(
+                        set.reps != null ? '${set.reps} reps' : '—',
+                        style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+                      ),
+                      if (set.isPersonalRecord) ...[
+                        const SizedBox(width: 8),
+                        const Icon(Icons.emoji_events, color: AppColors.warning, size: 16),
+                      ],
+                    ],
                   ),
                 ),
                 Icon(

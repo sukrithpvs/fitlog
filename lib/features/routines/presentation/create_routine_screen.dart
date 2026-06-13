@@ -9,6 +9,12 @@ import '../../../core/theme/app_colors.dart';
 import '../../exercises/presentation/widgets/exercise_picker_modal.dart';
 import '../providers/routine_providers.dart';
 
+class RoutineExercise {
+  final Exercise exercise;
+  int sets;
+  RoutineExercise(this.exercise, {this.sets = 3});
+}
+
 class CreateRoutineScreen extends ConsumerStatefulWidget {
   const CreateRoutineScreen({super.key});
 
@@ -19,7 +25,7 @@ class CreateRoutineScreen extends ConsumerStatefulWidget {
 class _CreateRoutineScreenState extends ConsumerState<CreateRoutineScreen> {
   final _titleController = TextEditingController();
   final _notesController = TextEditingController();
-  final _selectedExercises = <Exercise>[];
+  final _selectedExercises = <RoutineExercise>[];
   bool _isLoading = false;
 
   @override
@@ -123,24 +129,65 @@ class _CreateRoutineScreenState extends ConsumerState<CreateRoutineScreen> {
                         });
                       },
                       itemBuilder: (context, index) {
-                        final exercise = _selectedExercises[index];
+                        final routineExercise = _selectedExercises[index];
+                        final exercise = routineExercise.exercise;
                         return Card(
                           key: ValueKey(exercise.id),
                           margin: const EdgeInsets.only(bottom: 8),
-                          child: ListTile(
-                            leading: Icon(
-                              Icons.drag_handle,
-                              color: theme.colorScheme.outline,
-                            ),
-                            title: Text(exercise.name),
-                            subtitle: Text(exercise.primaryMuscle),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.close, size: 20),
-                              onPressed: () {
-                                setState(() {
-                                  _selectedExercises.removeAt(index);
-                                });
-                              },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: ListTile(
+                              leading: Icon(
+                                Icons.drag_handle,
+                                color: theme.colorScheme.outline,
+                              ),
+                              title: Text(exercise.name),
+                              subtitle: Row(
+                                children: [
+                                  Text(exercise.primaryMuscle),
+                                  const Spacer(),
+                                  // Sets counter
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(Icons.remove_circle_outline, size: 20),
+                                        onPressed: () {
+                                          if (routineExercise.sets > 1) {
+                                            setState(() => routineExercise.sets--);
+                                          }
+                                        },
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        '${routineExercise.sets} sets',
+                                        style: theme.textTheme.bodyMedium?.copyWith(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      IconButton(
+                                        icon: const Icon(Icons.add_circle_outline, size: 20),
+                                        onPressed: () {
+                                          setState(() => routineExercise.sets++);
+                                        },
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.close, size: 20),
+                                onPressed: () {
+                                  setState(() {
+                                    _selectedExercises.removeAt(index);
+                                  });
+                                },
+                              ),
                             ),
                           ),
                         );
@@ -193,9 +240,9 @@ class _CreateRoutineScreenState extends ConsumerState<CreateRoutineScreen> {
       builder: (context) => const ExercisePickerModal(),
     );
 
-    if (exercise != null && !_selectedExercises.contains(exercise)) {
+    if (exercise != null && !_selectedExercises.any((e) => e.exercise.id == exercise.id)) {
       setState(() {
-        _selectedExercises.add(exercise);
+        _selectedExercises.add(RoutineExercise(exercise));
       });
     }
   }
@@ -234,17 +281,19 @@ class _CreateRoutineScreenState extends ConsumerState<CreateRoutineScreen> {
         ),
       );
 
-      // Add exercises as template sets (3 sets each)
+      // Add exercises as template sets
+      int setOrderCounter = 0;
       for (int exerciseIndex = 0; exerciseIndex < _selectedExercises.length; exerciseIndex++) {
-        final exercise = _selectedExercises[exerciseIndex];
-        for (int setNum = 0; setNum < 3; setNum++) {
+        final routineExercise = _selectedExercises[exerciseIndex];
+        final exercise = routineExercise.exercise;
+        for (int setNum = 0; setNum < routineExercise.sets; setNum++) {
           await db.insertWorkoutSet(
             WorkoutSetsCompanion.insert(
               uuid: uuid.v4(),
               workoutId: workoutId,
               exerciseId: exercise.id,
               exerciseName: exercise.name,
-              setOrder: (exerciseIndex * 3) + setNum,
+              setOrder: setOrderCounter++,
             ),
           );
         }
