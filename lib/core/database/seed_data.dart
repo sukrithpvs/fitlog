@@ -227,6 +227,9 @@ Future<void> seedDefaultExercises(AppDatabase db) async {
     // ═══ CARDIO & FULL BODY ═══
     _e('Running', 'cardio', '', 'none', 'distance_time'),
     _e('Treadmill Running', 'cardio', '', 'machine', 'distance_time'),
+    _e('Treadmill Walking', 'cardio', '', 'machine', 'distance_time'),
+    _e('Walking', 'cardio', '', 'none', 'distance_time'),
+    _e('Hiking', 'cardio', '', 'none', 'distance_time'),
     _e('Cycling', 'cardio', '', 'none', 'distance_time'),
     _e('Stationary Bike', 'cardio', '', 'machine', 'distance_time'),
     _e('Rowing', 'cardio', '', 'machine', 'distance_time'),
@@ -241,6 +244,9 @@ Future<void> seedDefaultExercises(AppDatabase db) async {
     _e('Box Jumps', 'cardio', 'legs', 'other', 'reps_only'),
     _e('Sled Push', 'cardio', 'legs', 'other', 'distance_time'),
     _e('Sled Pull', 'cardio', 'back', 'other', 'distance_time'),
+    _e('Yoga', 'cardio', 'core', 'none', 'time_only'),
+    _e('Pilates', 'cardio', 'core', 'none', 'time_only'),
+    _e('Stretching', 'cardio', '', 'none', 'time_only'),
 
     // ═══ OLYMPIC LIFTING ═══
     _e('Clean and Jerk', 'legs', 'shoulders', 'barbell'),
