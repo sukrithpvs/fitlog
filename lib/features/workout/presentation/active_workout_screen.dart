@@ -1,4 +1,5 @@
 // lib/features/workout/presentation/active_workout_screen.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:drift/drift.dart' hide Column;
@@ -135,7 +136,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
           child: Padding(
             padding: const EdgeInsets.only(bottom: 8.0),
             child: Text(
-              'Duration: ${DateFormatter.formatDuration(DateTime.now().difference(_startTime))}',
+              'Duration: ${DateFormatter.duration(DateTime.now().difference(_startTime))}',
               style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.outline),
             ),
           ),
@@ -754,7 +755,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
     
     final db = ref.read(databaseProvider);
     await db.update(db.workoutSets).replace(
-      set.copyWith(setType: Value(types[nextIndex])),
+      set.copyWith(setType: types[nextIndex]),
     );
   }
 
