@@ -20,6 +20,7 @@ class AppTheme {
         onPrimary: Colors.white,
         secondary: AppColors.accentLight,
         surface: AppColors.darkSurface,
+        surfaceTint: Colors.transparent,
         onSurface: AppColors.darkTextPrimary,
         error: AppColors.error,
         outline: AppColors.darkBorder,
@@ -63,6 +64,7 @@ class AppTheme {
       ),
       cardTheme: CardThemeData(
         color: AppColors.darkSurface,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
@@ -139,12 +141,14 @@ class AppTheme {
       ),
       bottomSheetTheme: const BottomSheetThemeData(
         backgroundColor: AppColors.darkSurface,
+        surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
         ),
       ),
       dialogTheme: DialogThemeData(
         backgroundColor: AppColors.darkSurface,
+        surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
         ),
@@ -171,6 +175,7 @@ class AppTheme {
         onPrimary: Colors.white,
         secondary: AppColors.accentDark,
         surface: AppColors.lightSurface,
+        surfaceTint: Colors.transparent,
         onSurface: AppColors.lightTextPrimary,
         error: AppColors.error,
         outline: AppColors.lightBorder,

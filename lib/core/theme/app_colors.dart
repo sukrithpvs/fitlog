@@ -23,11 +23,11 @@ class AppColors {
   static const Color failureBadge = Color(0xFFEF4444);  // Red
   static const Color normalBadge = Color(0xFF2563EB);   // Blue
 
-  // ─── Dark Theme (Exact Hevy Spec) ───
-  static const Color darkBg = Color(0xFF121212);           // Near-black canvas
-  static const Color darkSurface = Color(0xFF1C1C1E);      // Elevated cards
-  static const Color darkSurfaceElevated = Color(0xFF252525);
-  static const Color darkBorder = Color(0xFF2A2A2A);
+  // ─── Dark Theme (AMOLED Black Spec) ───
+  static const Color darkBg = Color(0xFF000000);           // Pure black canvas
+  static const Color darkSurface = Color(0xFF121212);      // Elevated cards
+  static const Color darkSurfaceElevated = Color(0xFF1E1E1E);
+  static const Color darkBorder = Color(0xFF2C2C2E);
   static const Color darkTextPrimary = Color(0xFFFFFFFF);
   static const Color darkTextSecondary = Color(0xFFA1A1AA);
   static const Color darkTextTertiary = Color(0xFF71717A);
