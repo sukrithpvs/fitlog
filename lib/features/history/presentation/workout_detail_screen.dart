@@ -1,10 +1,10 @@
-// lib/features/history/presentation/workout_detail_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/database/database_provider.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../workout/presentation/active_workout_screen.dart';
 
 class WorkoutDetailScreen extends ConsumerWidget {
   final int workoutId;
@@ -21,6 +21,20 @@ class WorkoutDetailScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Workout Details'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.edit_outlined),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ActiveWorkoutScreen(
+                    workoutId: workoutId,
+                    isEditing: true,
+                  ),
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.delete_outline),
             onPressed: () => _confirmDelete(context, db),

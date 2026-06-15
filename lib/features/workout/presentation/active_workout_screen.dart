@@ -13,11 +13,21 @@ import '../../exercises/presentation/widgets/exercise_picker_modal.dart';
 import '../../../core/utils/pr_detector.dart';
 import '../../../core/utils/notification_service.dart';
 import 'widgets/plate_calculator_modal.dart';
+import 'workout_summary_screen.dart';
 
 class ActiveWorkoutScreen extends ConsumerStatefulWidget {
   final int? workoutId;
+  final String? routineName;
+  final int? folderId;
+  final bool isEditing;
 
-  const ActiveWorkoutScreen({super.key, this.workoutId});
+  const ActiveWorkoutScreen({
+    super.key,
+    this.workoutId,
+    this.routineName,
+    this.folderId,
+    this.isEditing = false,
+  });
 
   @override
   ConsumerState<ActiveWorkoutScreen> createState() => _ActiveWorkoutScreenState();
@@ -27,10 +37,15 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
   late int _workoutId;
   bool _isLoading = true;
   final DateTime _startTime = DateTime.now();
+  String _workoutTitle = '';
+  Timer? _durationTimer;
 
   // Controllers
   final Map<int, TextEditingController> _weightControllers = {};
   final Map<int, TextEditingController> _repsControllers = {};
+  final Map<int, TextEditingController> _timeControllers = {};
+  final Map<int, TextEditingController> _distanceControllers = {};
+  final Map<int, String> _trackingTypeCache = {};
 
   // Rest Timer State
   int? _activeRestSetId;
@@ -40,28 +55,44 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
   void initState() {
     super.initState();
     _initWorkout();
+    if (!widget.isEditing) {
+      _durationTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) setState(() {});
+      });
+    }
   }
 
   @override
   void dispose() {
+    if (!widget.isEditing) {
+      _durationTimer?.cancel();
+    }
     for (final controller in _weightControllers.values) {
       controller.dispose();
     }
     for (final controller in _repsControllers.values) {
       controller.dispose();
     }
+    for (final controller in _timeControllers.values) {
+      controller.dispose();
+    }
+    for (final controller in _distanceControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
   Future<void> _initWorkout() async {
+    final db = ref.read(databaseProvider);
     if (widget.workoutId != null) {
       _workoutId = widget.workoutId!;
+      final workout = await (db.select(db.workouts)..where((w) => w.id.equals(_workoutId))).getSingle();
+      _workoutTitle = workout.title;
     } else {
-      final db = ref.read(databaseProvider);
       _workoutId = await db.insertWorkout(
         WorkoutsCompanion.insert(
           uuid: const Uuid().v4(),
-          title: 'Quick Workout',
+          title: widget.routineName ?? 'Quick Workout',
           startTime: _startTime,
           isTemplate: const Value(false),
         ),
@@ -82,31 +113,33 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Active Workout'),
-            Text(
-              'Started ${DateFormatter.time(_startTime)}',
-              style: theme.textTheme.bodySmall,
-            ),
-          ],
+        title: Text(
+          widget.isEditing ? 'Edit Workout' : 
+          (_workoutTitle.isEmpty ? 'Active Workout' : _workoutTitle),
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.calculate),
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (_) => const PlateCalculatorModal(),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.check),
-            onPressed: () => _finishWorkout(context),
-          ),
+          if (widget.isEditing)
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Save', style: TextStyle(fontWeight: FontWeight.bold)),
+            )
+          else
+            TextButton(
+              onPressed: () => _finishWorkout(context),
+              child: const Text('Finish', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.accent)),
+            ),
         ],
+        bottom: widget.isEditing ? null : PreferredSize(
+          preferredSize: const Size.fromHeight(40),
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 8.0),
+            child: Text(
+              'Duration: ${DateFormatter.formatDuration(DateTime.now().difference(_startTime))}',
+              style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.outline),
+            ),
+          ),
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showExercisePicker(context),
@@ -268,6 +301,16 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
 
   Widget _buildExerciseCard(BuildContext context, String exerciseName, List<WorkoutSet> sets) {
     final theme = Theme.of(context);
+    
+    final exerciseId = sets.first.exerciseId;
+    if (!_trackingTypeCache.containsKey(exerciseId)) {
+      _trackingTypeCache[exerciseId] = 'weight_reps'; // temporary default
+      ref.read(databaseProvider).getExerciseById(exerciseId).then((ex) {
+        if (mounted && _trackingTypeCache[exerciseId] != ex.trackingType) {
+          setState(() => _trackingTypeCache[exerciseId] = ex.trackingType);
+        }
+      });
+    }
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -412,6 +455,22 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
 
   Widget _buildSetsTable(BuildContext context, List<WorkoutSet> sets) {
     final theme = Theme.of(context);
+    final trackingType = _trackingTypeCache[sets.first.exerciseId] ?? 'weight_reps';
+    
+    String col1 = 'KG';
+    String col2 = 'REPS';
+    
+    if (trackingType == 'reps_only') {
+      col1 = '-';
+      col2 = 'REPS';
+    } else if (trackingType == 'time_only') {
+      col1 = '-';
+      col2 = 'TIME';
+    } else if (trackingType == 'distance_time') {
+      col1 = 'KM';
+      col2 = 'TIME';
+    }
+
     return Column(
       children: [
         Row(
@@ -424,10 +483,10 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
               child: Text('PREVIOUS', style: theme.textTheme.labelSmall),
             ),
             Expanded(
-              child: Text('KG', style: theme.textTheme.labelSmall),
+              child: Text(col1, style: theme.textTheme.labelSmall, textAlign: TextAlign.center),
             ),
             Expanded(
-              child: Text('REPS', style: theme.textTheme.labelSmall),
+              child: Text(col2, style: theme.textTheme.labelSmall, textAlign: TextAlign.center),
             ),
             const SizedBox(width: 48),
           ],
@@ -440,49 +499,100 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
 
   Widget _buildSetRow(BuildContext context, WorkoutSet set, int setNumber) {
     final theme = Theme.of(context);
+    final trackingType = _trackingTypeCache[set.exerciseId] ?? 'weight_reps';
     
-    if (!_weightControllers.containsKey(set.id)) {
-      _weightControllers[set.id] = TextEditingController(
-        text: set.weight != null ? set.weight!.toStringAsFixed(1).replaceAll('.0', '') : '',
+    if (!_weightControllers.containsKey(set.id)) _weightControllers[set.id] = TextEditingController(text: set.weight?.toStringAsFixed(1).replaceAll('.0', '') ?? '');
+    if (!_repsControllers.containsKey(set.id)) _repsControllers[set.id] = TextEditingController(text: set.reps?.toString() ?? '');
+    if (!_timeControllers.containsKey(set.id)) {
+      String timeStr = '';
+      if (set.durationSeconds != null) {
+        final m = set.durationSeconds! ~/ 60;
+        final s = set.durationSeconds! % 60;
+        timeStr = '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+      }
+      _timeControllers[set.id] = TextEditingController(text: timeStr);
+    }
+    if (!_distanceControllers.containsKey(set.id)) _distanceControllers[set.id] = TextEditingController(text: set.distanceMeters != null ? (set.distanceMeters! / 1000).toStringAsFixed(2).replaceAll('.00', '') : '');
+    
+    Widget buildCol1() {
+      if (trackingType == 'reps_only' || trackingType == 'time_only') return const Center(child: Text('-'));
+      if (trackingType == 'distance_time') {
+        return TextField(
+          controller: _distanceControllers[set.id],
+          decoration: const InputDecoration(hintText: '0.0', contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8), border: OutlineInputBorder()),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          style: theme.textTheme.bodyMedium, textAlign: TextAlign.center,
+          onChanged: (v) {
+            final val = double.tryParse(v);
+            _updateSet(set.id, distanceMeters: val != null ? val * 1000 : null);
+          },
+        );
+      }
+      return TextField(
+        controller: _weightControllers[set.id],
+        decoration: const InputDecoration(hintText: '0', contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8), border: OutlineInputBorder()),
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        style: theme.textTheme.bodyMedium, textAlign: TextAlign.center,
+        onChanged: (v) => _updateSet(set.id, weight: double.tryParse(v)),
       );
     }
-    if (!_repsControllers.containsKey(set.id)) {
-      _repsControllers[set.id] = TextEditingController(
-        text: set.reps?.toString() ?? '',
+
+    Widget buildCol2() {
+      if (trackingType == 'time_only' || trackingType == 'distance_time') {
+        return TextField(
+          controller: _timeControllers[set.id],
+          decoration: const InputDecoration(hintText: '00:00', contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8), border: OutlineInputBorder()),
+          keyboardType: TextInputType.datetime,
+          style: theme.textTheme.bodyMedium, textAlign: TextAlign.center,
+          onChanged: (v) {
+            if (v.length == 5 && v.contains(':')) {
+              final parts = v.split(':');
+              if (parts.length == 2) {
+                final m = int.tryParse(parts[0]) ?? 0;
+                final s = int.tryParse(parts[1]) ?? 0;
+                _updateSet(set.id, durationSeconds: (m * 60) + s);
+              }
+            } else if (v.isEmpty) {
+              _updateSet(set.id, durationSeconds: null);
+            }
+          },
+        );
+      }
+      return TextField(
+        controller: _repsControllers[set.id],
+        decoration: const InputDecoration(hintText: '0', contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8), border: OutlineInputBorder()),
+        keyboardType: TextInputType.number,
+        style: theme.textTheme.bodyMedium, textAlign: TextAlign.center,
+        onChanged: (v) => _updateSet(set.id, reps: int.tryParse(v)),
       );
     }
-    
-    final weightController = _weightControllers[set.id]!;
-    final repsController = _repsControllers[set.id]!;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          // Set number with RPE indicator
+          // Set number / Set Type with RPE indicator
           SizedBox(
             width: 40,
             child: GestureDetector(
+              onTap: () => _cycleSetType(set),
               onLongPress: () => _showRpeDialog(set),
               child: Stack(
                 alignment: Alignment.center,
+                clipBehavior: Clip.none,
                 children: [
-                  Text(
-                    '$setNumber',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  _buildSetTypeIndicator(set, setNumber),
                   if (set.rpe != null)
                     Positioned(
-                      right: 0,
-                      top: 0,
+                      right: -2,
+                      top: -2,
                       child: Container(
-                        width: 6,
-                        height: 6,
+                        width: 8,
+                        height: 8,
                         decoration: BoxDecoration(
                           color: _getRpeColor(set.rpe!),
                           shape: BoxShape.circle,
+                          border: Border.all(color: theme.colorScheme.surface, width: 1.5),
                         ),
                       ),
                     ),
@@ -503,53 +613,10 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
               },
             ),
           ),
-          Expanded(
-            child: TextField(
-              controller: weightController,
-              decoration: const InputDecoration(
-                hintText: '0',
-                contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                border: OutlineInputBorder(),
-              ),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              style: theme.textTheme.bodyMedium,
-              textAlign: TextAlign.center,
-              onChanged: (value) {
-                if (value.isEmpty) {
-                  _updateSet(set.id, weight: null);
-                } else {
-                  final weight = double.tryParse(value);
-                  if (weight != null) {
-                    _updateSet(set.id, weight: weight);
-                  }
-                }
-              },
-            ),
-          ),
           const SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              controller: repsController,
-              decoration: const InputDecoration(
-                hintText: '0',
-                contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                border: OutlineInputBorder(),
-              ),
-              keyboardType: TextInputType.number,
-              style: theme.textTheme.bodyMedium,
-              textAlign: TextAlign.center,
-              onChanged: (value) {
-                if (value.isEmpty) {
-                  _updateSet(set.id, reps: null);
-                } else {
-                  final reps = int.tryParse(value);
-                  if (reps != null) {
-                    _updateSet(set.id, reps: reps);
-                  }
-                }
-              },
-            ),
-          ),
+          Expanded(child: buildCol1()),
+          const SizedBox(width: 8),
+          Expanded(child: buildCol2()),
           const SizedBox(width: 8),
           IconButton(
             icon: Icon(
@@ -642,7 +709,56 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
     }
   }
 
-  Future<void> _updateSet(int setId, {double? weight, int? reps}) async {
+  Widget _buildSetTypeIndicator(WorkoutSet set, int setNumber) {
+    final theme = Theme.of(context);
+    String label = '$setNumber';
+    Color bgColor = Colors.transparent;
+    Color textColor = theme.colorScheme.onSurface;
+
+    if (set.setType == 'warmup') {
+      label = 'W';
+      bgColor = AppColors.warning.withOpacity(0.2);
+      textColor = AppColors.warning;
+    } else if (set.setType == 'drop') {
+      label = 'D';
+      bgColor = AppColors.accent.withOpacity(0.2);
+      textColor = AppColors.accent;
+    } else if (set.setType == 'failure') {
+      label = 'F';
+      bgColor = AppColors.error.withOpacity(0.2);
+      textColor = AppColors.error;
+    }
+
+    return Container(
+      width: 24,
+      height: 24,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        style: theme.textTheme.bodyMedium?.copyWith(
+          fontWeight: FontWeight.bold,
+          color: textColor,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _cycleSetType(WorkoutSet set) async {
+    final types = ['normal', 'warmup', 'drop', 'failure'];
+    final currentIndex = types.indexOf(set.setType);
+    final nextIndex = (currentIndex + 1) % types.length;
+    
+    final db = ref.read(databaseProvider);
+    await db.update(db.workoutSets).replace(
+      set.copyWith(setType: Value(types[nextIndex])),
+    );
+  }
+
+  Future<void> _updateSet(int setId, {double? weight, int? reps, int? durationSeconds, double? distanceMeters}) async {
     final db = ref.read(databaseProvider);
     final currentSet = await (db.select(db.workoutSets)..where((s) => s.id.equals(setId))).getSingleOrNull();
     
@@ -651,6 +767,8 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
         currentSet.copyWith(
           weight: weight != null ? Value(weight) : (currentSet.weight != null ? Value(currentSet.weight) : const Value.absent()),
           reps: reps != null ? Value(reps) : (currentSet.reps != null ? Value(currentSet.reps) : const Value.absent()),
+          durationSeconds: durationSeconds != null ? Value(durationSeconds) : (currentSet.durationSeconds != null ? Value(currentSet.durationSeconds) : const Value.absent()),
+          distanceMeters: distanceMeters != null ? Value(distanceMeters) : (currentSet.distanceMeters != null ? Value(currentSet.distanceMeters) : const Value.absent()),
         ),
       );
     }
@@ -682,7 +800,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
       ),
     );
 
-    if (newCompleted && set.weight != null && set.reps != null) {
+    if (newCompleted && !widget.isEditing) {
       setState(() {
         _activeRestSetId = set.id;
         _restSecondsRemaining = 90;
@@ -937,12 +1055,14 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
       );
       
       if (mounted) {
-        // Fix for "stays on the same page" - just pop using the current valid context!
+        // Fix for "stays on the same page" - pop the active workout screen
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Workout completed! 💪 $completedSets sets, ${totalVolume.toStringAsFixed(0)}kg volume'),
-            duration: const Duration(seconds: 3),
+        
+        // Push the new intelligent summary screen
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => WorkoutSummaryScreen(workoutId: _workoutId),
           ),
         );
       }
