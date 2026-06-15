@@ -228,9 +228,51 @@ class _ExerciseStatsView extends ConsumerWidget {
           return const Center(child: Text('Not enough data to calculate stats.'));
         }
 
+        // Calculate Insights
+        String insightText = 'Keep pushing! Building a new baseline.';
+        if (stats.volumeHistory.length >= 2) {
+          final firstVol = stats.volumeHistory.first.value;
+          final lastVol = stats.volumeHistory.last.value;
+          if (firstVol > 0) {
+            final pct = ((lastVol - firstVol) / firstVol * 100);
+            if (pct > 0) {
+              insightText = '🔥 Great progress! Your volume has increased by ${pct.toStringAsFixed(1)}% since your first tracked session.';
+            } else if (pct < 0) {
+              insightText = '📉 Volume is down by ${pct.abs().toStringAsFixed(1)}%. Make sure you are recovering properly!';
+            } else {
+              insightText = '⚖️ Volume is stable. Consider adding a rep or a kg to force adaptation.';
+            }
+          }
+        }
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Key Insights
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.lightbulb, color: theme.colorScheme.primary),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      insightText,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
             // PR Highlights
             Row(
               children: [
@@ -244,11 +286,11 @@ class _ExerciseStatsView extends ConsumerWidget {
             const SizedBox(height: 24),
 
             // Charts
-            _ChartSection(title: '1RM ESTIMATION (BRZYCKI)', data: stats.oneRmHistory, color: AppColors.accent),
+            _ChartSection(title: '1RM ESTIMATION', data: stats.oneRmHistory, color: const Color(0xFFD946EF)), // Neon Purple
             const SizedBox(height: 24),
-            _ChartSection(title: 'MAX WEIGHT', data: stats.maxWeightHistory, color: theme.colorScheme.primary),
+            _ChartSection(title: 'MAX WEIGHT', data: stats.maxWeightHistory, color: const Color(0xFF10B981)), // Emerald Green
             const SizedBox(height: 24),
-            _ChartSection(title: 'VOLUME', data: stats.volumeHistory, color: AppColors.success),
+            _ChartSection(title: 'VOLUME', data: stats.volumeHistory, color: const Color(0xFF0EA5E9)), // Electric Blue
           ],
         );
       },

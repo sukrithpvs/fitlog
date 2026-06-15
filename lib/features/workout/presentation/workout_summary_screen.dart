@@ -68,6 +68,7 @@ class _WorkoutSummaryScreenState extends ConsumerState<WorkoutSummaryScreen> {
     }
 
     final completedSets = _sets.where((s) => s.isCompleted).toList();
+    final prSets = completedSets.where((s) => s.isPersonalRecord).toList();
     final totalVolume = completedSets.where((s) => s.weight != null && s.reps != null).fold<double>(0, (sum, s) => sum + (s.weight! * s.reps!));
     final duration = _workout!.endTime != null ? _workout!.endTime!.difference(_workout!.startTime) : Duration.zero;
 
@@ -118,7 +119,31 @@ class _WorkoutSummaryScreenState extends ConsumerState<WorkoutSummaryScreen> {
               ),
             ),
             const SizedBox(height: 32),
-            Text('Intelligent Insights', style: theme.textTheme.titleLarge),
+            if (prSets.isNotEmpty) ...[
+              Row(
+                children: [
+                  const Icon(Icons.emoji_events, color: AppColors.accent),
+                  const SizedBox(width: 8),
+                  Text('Trophy Cabinet', style: theme.textTheme.titleLarge),
+                ],
+              ),
+              const SizedBox(height: 16),
+              ...prSets.map((s) => Card(
+                color: AppColors.accent.withValues(alpha: 0.1),
+                shape: RoundedRectangleBorder(
+                  side: BorderSide(color: AppColors.accent.withValues(alpha: 0.3)),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                margin: const EdgeInsets.only(bottom: 8),
+                child: ListTile(
+                  leading: const Icon(Icons.star, color: AppColors.accent),
+                  title: Text(s.exerciseName, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text('New Personal Record: ${s.weight?.toStringAsFixed(1) ?? ''}kg × ${s.reps ?? ''} reps'),
+                ),
+              )),
+              const SizedBox(height: 32),
+            ],
+            Text('Exercise Breakdown', style: theme.textTheme.titleLarge),
             const SizedBox(height: 16),
             ...exerciseGroups.entries.map((entry) {
               final exId = entry.key;
@@ -180,25 +205,33 @@ class _WorkoutSummaryScreenState extends ConsumerState<WorkoutSummaryScreen> {
     String text;
 
     if (diff > 0) {
-      icon = Icons.trending_up;
+      icon = Icons.local_fire_department;
       color = AppColors.success;
-      text = 'Progressive Overload! (+${pct.toStringAsFixed(1)}% volume vs last time)';
+      text = '🔥 Improved (+${pct.toStringAsFixed(1)}% volume vs last time)';
     } else if (diff < 0) {
       icon = Icons.trending_down;
       color = AppColors.error;
-      text = 'Underperformed (-${pct.abs().toStringAsFixed(1)}% volume vs last time)';
+      text = '📉 Underperformed (-${pct.abs().toStringAsFixed(1)}% volume vs last time)';
     } else {
-      icon = Icons.compare_arrows;
-      color = AppColors.warning;
-      text = 'Matched previous performance.';
+      icon = Icons.balance;
+      color = theme.colorScheme.primary;
+      text = '⚖️ Maintained previous performance.';
     }
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: color.withValues(alpha: 0.2)),
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: ListTile(
-        leading: Icon(icon, color: color),
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
+          child: Icon(icon, color: color),
+        ),
         title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text(text, style: TextStyle(color: color)),
+        subtitle: Text(text, style: TextStyle(color: color, fontSize: 12)),
       ),
     );
   }

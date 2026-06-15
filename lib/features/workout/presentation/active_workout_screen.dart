@@ -5,15 +5,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:drift/drift.dart' hide Column;
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
+import 'package:drift/drift.dart' as drift;
 
 import '../../../core/database/app_database.dart';
 import '../../../core/database/database_provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../exercises/presentation/widgets/exercise_picker_modal.dart';
+import 'widgets/plate_calculator_modal.dart';
 import '../../../core/utils/pr_detector.dart';
 import '../../../core/utils/notification_service.dart';
-import 'widgets/plate_calculator_modal.dart';
 import 'workout_summary_screen.dart';
 
 class ActiveWorkoutScreen extends ConsumerStatefulWidget {
@@ -120,6 +121,17 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.calculate_outlined),
+            tooltip: 'Plate Calculator',
+            onPressed: () {
+              showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                builder: (_) => const PlateCalculatorModal(targetWeight: 60.0),
+              );
+            },
+          ),
           if (widget.isEditing)
             TextButton(
               onPressed: () => Navigator.pop(context),
@@ -330,23 +342,29 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
                 ),
                 PopupMenuButton<String>(
                   icon: const Icon(Icons.more_vert),
-                  onSelected: (value) {
-                    if (value == 'delete') {
-                      _deleteExercise(sets);
-                    } else if (value == 'superset') {
-                      _createSupersetFromCard(sets.first);
-                    }
-                  },
                   itemBuilder: (context) => [
                     const PopupMenuItem(
                       value: 'superset',
                       child: Text('Create Superset'),
                     ),
                     const PopupMenuItem(
+                      value: 'warmup',
+                      child: Text('Generate Warm-ups'),
+                    ),
+                    const PopupMenuItem(
                       value: 'delete',
                       child: Text('Remove Exercise', style: TextStyle(color: Colors.red)),
                     ),
                   ],
+                  onSelected: (value) {
+                    if (value == 'delete') {
+                      _deleteExercise(sets);
+                    } else if (value == 'superset') {
+                      _createSupersetFromCard(sets.first);
+                    } else if (value == 'warmup') {
+                      _generateWarmupSets(sets);
+                    }
+                  },
                 ),
                 IconButton(
                   icon: const Icon(Icons.add_circle_outline, size: 20),
@@ -477,7 +495,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
         Row(
           children: [
             SizedBox(
-              width: 40,
+              width: 50,
               child: Text('SET', style: theme.textTheme.labelSmall),
             ),
             Expanded(
@@ -494,6 +512,14 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
         ),
         const SizedBox(height: 8),
         ...sets.map((set) => _buildSetRow(context, set, sets.indexOf(set) + 1)),
+        const SizedBox(height: 8),
+        Center(
+          child: TextButton.icon(
+            icon: const Icon(Icons.subdirectory_arrow_right, size: 18),
+            label: const Text('Add Drop Set'),
+            onPressed: () => _addSet(sets.last, isDropSet: true),
+          ),
+        ),
       ],
     );
   }
@@ -574,31 +600,41 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
         children: [
           // Set number / Set Type with RPE indicator
           SizedBox(
-            width: 40,
-            child: GestureDetector(
-              onTap: () => _cycleSetType(set),
-              onLongPress: () => _showRpeDialog(set),
-              child: Stack(
-                alignment: Alignment.center,
-                clipBehavior: Clip.none,
-                children: [
-                  _buildSetTypeIndicator(set, setNumber),
-                  if (set.rpe != null)
-                    Positioned(
-                      right: -2,
-                      top: -2,
-                      child: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: _getRpeColor(set.rpe!),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: theme.colorScheme.surface, width: 1.5),
-                        ),
-                      ),
+            width: 50,
+            child: Row(
+              children: [
+                if (set.setType == 'drop')
+                  Icon(Icons.subdirectory_arrow_right, size: 16, color: theme.colorScheme.outline)
+                else
+                  const SizedBox(width: 16),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => _cycleSetType(set),
+                    onLongPress: () => _showRpeDialog(set),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      clipBehavior: Clip.none,
+                      children: [
+                        _buildSetTypeIndicator(set, setNumber),
+                        if (set.rpe != null)
+                          Positioned(
+                            right: -2,
+                            top: -2,
+                            child: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: _getRpeColor(set.rpe!),
+                                shape: BoxShape.circle,
+                                border: Border.all(color: theme.colorScheme.surface, width: 1.5),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
-                ],
-              ),
+                  ),
+                ),
+              ],
             ),
           ),
           Expanded(
@@ -802,9 +838,22 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
     );
 
     if (newCompleted && !widget.isEditing) {
+      int suggestedRest = 90;
+      try {
+        final ex = await db.getExerciseById(set.exerciseId);
+        final primaryMuscle = ex.primaryMuscle.toLowerCase();
+        if (primaryMuscle == 'legs' || primaryMuscle == 'back' || primaryMuscle == 'chest') {
+          suggestedRest = 120;
+        } else if (primaryMuscle == 'core' || primaryMuscle == 'biceps' || primaryMuscle == 'triceps' || primaryMuscle == 'forearms') {
+          suggestedRest = 60;
+        } else if (primaryMuscle == 'cardio') {
+          suggestedRest = 30;
+        }
+      } catch (_) {}
+
       setState(() {
         _activeRestSetId = set.id;
-        _restSecondsRemaining = 90;
+        _restSecondsRemaining = suggestedRest;
       });
       _startRestTimer();
     }
@@ -832,6 +881,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
     );
 
     if (exercise != null) {
+      await _checkRecovery(exercise);
       final db = ref.read(databaseProvider);
       await db.insertWorkoutSet(
         WorkoutSetsCompanion.insert(
@@ -854,6 +904,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
     );
 
     if (exercise != null) {
+      await _checkRecovery(exercise);
       final db = ref.read(databaseProvider);
       final supersetId = const Uuid().v4();
 
@@ -885,6 +936,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
     );
 
     if (exercise != null) {
+      await _checkRecovery(exercise);
       final db = ref.read(databaseProvider);
       await db.insertWorkoutSet(
         WorkoutSetsCompanion.insert(
@@ -908,7 +960,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
     }
   }
 
-  Future<void> _addSet(WorkoutSet templateSet) async {
+  Future<void> _addSet(WorkoutSet templateSet, {bool isDropSet = false}) async {
     final db = ref.read(databaseProvider);
     final sets = await db.getSetsForWorkout(_workoutId);
     final exerciseSets = sets.where((s) => s.exerciseName == templateSet.exerciseName).toList();
@@ -923,8 +975,82 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
         setOrder: maxOrder + 1,
         weight: Value(templateSet.weight),
         reps: Value(templateSet.reps),
-        setType: const Value('normal'),
+        setType: Value(isDropSet ? 'drop' : 'normal'),
         supersetId: Value(templateSet.supersetId),
+      ),
+    );
+  }
+
+  Future<void> _checkRecovery(Exercise exercise) async {
+    final db = ref.read(databaseProvider);
+    final twoDaysAgo = DateTime.now().subtract(const Duration(hours: 48));
+    
+    // Check if there are completed sets for this primary muscle in the last 48 hours
+    final recentSets = await (db.select(db.workoutSets).join([
+      drift.innerJoin(db.workouts, db.workouts.id.equalsExp(db.workoutSets.workoutId)),
+      drift.innerJoin(db.exercises, db.exercises.id.equalsExp(db.workoutSets.exerciseId)),
+    ])
+      ..where(db.workoutSets.isCompleted.equals(true))
+      ..where(db.workouts.endTime.isBiggerOrEqualValue(twoDaysAgo))
+      ..where(db.exercises.primaryMuscle.equals(exercise.primaryMuscle))
+    ).get();
+
+    if (recentSets.isNotEmpty && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.warning_amber, color: Colors.orange),
+              const SizedBox(width: 8),
+              Expanded(child: Text('⚠️ Your ${exercise.primaryMuscle} might still be recovering from a recent workout!')),
+            ],
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _generateWarmupSets(List<WorkoutSet> sets) async {
+    final firstWorkingSet = sets.firstWhere((s) => s.weight != null && s.weight! > 0, orElse: () => sets.first);
+    final workingWeight = firstWorkingSet.weight ?? 0.0;
+    
+    if (workingWeight < 20) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Target weight too light for generated warmups.')));
+      }
+      return;
+    }
+
+    final db = ref.read(databaseProvider);
+    final exerciseSets = await (db.select(db.workoutSets)
+      ..where((s) => s.workoutId.equals(_workoutId) & s.exerciseId.equals(firstWorkingSet.exerciseId))
+    ).get();
+    final minOrder = exerciseSets.isEmpty ? 0 : exerciseSets.map((s) => s.setOrder).reduce((a, b) => a < b ? a : b);
+
+    // Create 2 warmup sets: 50% for 10, 75% for 5
+    await db.insertWorkoutSet(
+      WorkoutSetsCompanion.insert(
+        uuid: const Uuid().v4(),
+        workoutId: _workoutId,
+        exerciseId: firstWorkingSet.exerciseId,
+        exerciseName: firstWorkingSet.exerciseName,
+        setOrder: minOrder - 2,
+        weight: Value(workingWeight * 0.5),
+        reps: const Value(10),
+        setType: const Value('warmup'),
+      ),
+    );
+    await db.insertWorkoutSet(
+      WorkoutSetsCompanion.insert(
+        uuid: const Uuid().v4(),
+        workoutId: _workoutId,
+        exerciseId: firstWorkingSet.exerciseId,
+        exerciseName: firstWorkingSet.exerciseName,
+        setOrder: minOrder - 1,
+        weight: Value(workingWeight * 0.75),
+        reps: const Value(5),
+        setType: const Value('warmup'),
       ),
     );
   }

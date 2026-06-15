@@ -120,11 +120,32 @@ class _SmoothLinePainter extends CustomPainter {
     final chartWidth = size.width - leftPadding - rightPadding;
     final chartHeight = size.height - bottomPadding - topPadding;
 
-    final maxValue = data.map((d) => d.value).reduce(max);
-    final minValue = data.map((d) => d.value).reduce(min);
+    double maxValue = data.map((d) => d.value).reduce(max);
+    double minValue = data.map((d) => d.value).reduce(min);
     
-    // Add 10% padding to top so line doesn't hit the ceiling
-    final valueRange = maxValue - minValue == 0 ? 1.0 : (maxValue - minValue) * 1.1;
+    if (maxValue == minValue) {
+      if (maxValue == 0) {
+        maxValue = 10.0;
+        minValue = 0.0;
+      } else {
+        double padding = (maxValue * 0.2).abs();
+        if (padding < 1.0) padding = 1.0;
+        maxValue += padding;
+        minValue -= padding;
+      }
+    } else {
+      // Add padding to top and bottom so lines don't hug the edges
+      final diff = maxValue - minValue;
+      maxValue += diff * 0.15;
+      minValue -= diff * 0.15;
+      
+      // Prevent minValue from dropping below zero if actual data doesn't
+      if (minValue < 0 && data.map((d) => d.value).reduce(min) >= 0) {
+        minValue = 0;
+      }
+    }
+
+    final valueRange = maxValue - minValue;
 
     // Draw grid lines & Y-axis labels
     final gridPaint = Paint()

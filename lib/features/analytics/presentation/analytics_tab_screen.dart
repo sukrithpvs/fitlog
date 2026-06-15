@@ -13,6 +13,7 @@ import '../../../shared/widgets/custom_charts.dart';
 import 'body_metrics_screen.dart';
 import 'muscle_progress_screen.dart';
 import 'exercise_progress_screen.dart';
+import 'monthly_report_screen.dart';
 import 'widgets/muscle_recovery_card.dart';
 
 // ─── Stats Provider (Overview) ───
@@ -181,6 +182,16 @@ class _AnalyticsTabScreenState extends ConsumerState<AnalyticsTabScreen> {
       appBar: AppBar(
         title: const Text('Analytics'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.calendar_month, color: AppColors.accent),
+            tooltip: 'Monthly Wrap-Up',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => MonthlyReportScreen()),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.fitness_center),
             onPressed: () {
