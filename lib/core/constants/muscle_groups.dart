@@ -3,11 +3,15 @@
 enum MuscleGroup {
   chest('Chest'),
   back('Back'),
-  legs('Legs (Quads/Glutes)'),
+  traps('Traps'),
+  legs('Legs (Quads)'),
+  glutes('Glutes'),
   hamstrings('Legs (Hamstrings)'),
+  calves('Calves'),
   shoulders('Shoulders'),
   biceps('Arms (Biceps)'),
   triceps('Arms (Triceps)'),
+  forearms('Forearms'),
   core('Core'),
   cardio('Cardio');
 

@@ -13,16 +13,21 @@ import 'features/exercises/presentation/exercises_tab_screen.dart';
 import 'features/history/presentation/history_tab_screen.dart';
 import 'features/analytics/presentation/analytics_tab_screen.dart';
 import 'features/settings/presentation/settings_tab_screen.dart';
+import 'features/onboarding/presentation/onboarding_screen.dart';
 
 // ─── GoRouter Configuration ───
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 
-final routerProvider = Provider<GoRouter>((ref) {
+final routerProvider = Provider.family<GoRouter, bool>((ref, hasSeenOnboarding) {
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
-    initialLocation: '/workout',
+    initialLocation: hasSeenOnboarding ? '/workout' : '/onboarding',
     routes: [
+      GoRoute(
+        path: '/onboarding',
+        builder: (context, state) => const OnboardingScreen(),
+      ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) {
           return _MainShell(navigationShell: navigationShell);
@@ -77,12 +82,13 @@ final routerProvider = Provider<GoRouter>((ref) {
 // ─── Main App Widget ───
 
 class FitLogApp extends ConsumerWidget {
-  const FitLogApp({super.key});
+  final bool hasSeenOnboarding;
+  const FitLogApp({super.key, required this.hasSeenOnboarding});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
-    final router = ref.watch(routerProvider);
+    final router = ref.watch(routerProvider(hasSeenOnboarding));
 
     return MaterialApp.router(
       title: 'FitLog',

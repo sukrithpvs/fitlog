@@ -22,16 +22,16 @@ final muscleAnalyticsProvider = StreamProvider.family<MuscleGroupAnalytics, Stri
   final thirtyDaysAgo = DateTime.now().subtract(const Duration(days: 30));
   
   double totalVolume = 0;
-  int totalSets = 0;
+  double totalSets = 0;
   int workoutsWithMuscle = 0;
   final volumeByDate = <DateTime, double>{};
-  final setsByDate = <DateTime, int>{};
+  final setsByDate = <DateTime, double>{};
   
   for (final workout in workouts) {
     final sets = await db.getSetsForWorkout(workout.id);
     bool workoutHasMuscle = false;
     double workoutVolume = 0;
-    int workoutSets = 0;
+    double workoutSets = 0;
     
     for (final set in sets) {
       if (!set.isCompleted || set.weight == null || set.reps == null) continue;
@@ -39,13 +39,17 @@ final muscleAnalyticsProvider = StreamProvider.family<MuscleGroupAnalytics, Stri
       // Get exercise to check muscle
       try {
         final exercise = await db.getExerciseById(set.exerciseId);
-        if (exercise.primaryMuscle.toLowerCase() == muscle.toLowerCase()) {
-          final volume = set.weight! * set.reps!;
+        final primaryMatch = exercise.primaryMuscle.toLowerCase() == muscle.toLowerCase();
+        final secondaryMatch = exercise.secondaryMuscles.toLowerCase().split(',').map((e) => e.trim()).contains(muscle.toLowerCase());
+        
+        if (primaryMatch || secondaryMatch) {
+          final multiplier = primaryMatch ? 1.0 : 0.5;
+          final volume = (set.weight! * set.reps!) * multiplier;
           totalVolume += volume;
-          totalSets++;
+          totalSets += multiplier;
           workoutHasMuscle = true;
           workoutVolume += volume;
-          workoutSets++;
+          workoutSets += multiplier;
         }
       } catch (_) {}
     }
@@ -66,7 +70,10 @@ final muscleAnalyticsProvider = StreamProvider.family<MuscleGroupAnalytics, Stri
     for (final set in sets) {
       try {
         final exercise = await db.getExerciseById(set.exerciseId);
-        if (exercise.primaryMuscle.toLowerCase() == muscle.toLowerCase()) {
+        final primaryMatch = exercise.primaryMuscle.toLowerCase() == muscle.toLowerCase();
+        final secondaryMatch = exercise.secondaryMuscles.toLowerCase().split(',').map((e) => e.trim()).contains(muscle.toLowerCase());
+        
+        if (primaryMatch || secondaryMatch) {
           recentWorkoutsWithMuscle++;
           break;
         }
@@ -111,7 +118,7 @@ final muscleAnalyticsProvider = StreamProvider.family<MuscleGroupAnalytics, Stri
 class MuscleGroupAnalytics {
   final String muscleName;
   final double totalVolume;
-  final int totalSets;
+  final double totalSets;
   final int workoutCount;
   final double frequencyPerWeek;
   final double avgVolumePerSession;
@@ -281,7 +288,9 @@ class _MuscleProgressScreenState extends ConsumerState<MuscleProgressScreen> {
               Expanded(
                 child: _StatCard(
                   title: 'Total Sets',
-                  value: '${analytics.totalSets}',
+                  value: analytics.totalSets == analytics.totalSets.toInt() 
+                      ? analytics.totalSets.toInt().toString() 
+                      : analytics.totalSets.toStringAsFixed(1),
                   icon: Icons.fitness_center,
                   color: color,
                 ),

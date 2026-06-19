@@ -4,7 +4,8 @@ enum SetType {
   normal('N', 'Normal'),
   warmup('W', 'Warm-up'),
   drop('D', 'Drop Set'),
-  failure('F', 'Failure');
+  failure('F', 'Failure'),
+  partials('P', 'Partials');
 
   final String badge;
   final String displayName;
@@ -12,7 +13,7 @@ enum SetType {
 
   static SetType fromString(String value) {
     return SetType.values.firstWhere(
-      (e) => e.name == value,
+      (e) => e.name == value || e.name == value.toLowerCase(),
       orElse: () => SetType.normal,
     );
   }

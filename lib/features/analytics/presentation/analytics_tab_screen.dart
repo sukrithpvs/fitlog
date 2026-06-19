@@ -15,6 +15,7 @@ import 'muscle_progress_screen.dart';
 import 'exercise_progress_screen.dart';
 import 'monthly_report_screen.dart';
 import 'widgets/muscle_recovery_card.dart';
+import '../utils/streak_calculator.dart';
 
 // ─── Stats Provider (Overview) ───
 final workoutStatsProvider = StreamProvider<Map<String, dynamic>>((ref) {
@@ -36,6 +37,8 @@ final workoutStatsProvider = StreamProvider<Map<String, dynamic>>((ref) {
     final totalVolume = completedSets
         .where((s) => s.weight != null && s.reps != null)
         .fold<double>(0, (sum, s) => sum + (s.weight! * s.reps!));
+        
+    final streakData = StreakCalculator.calculateWeeklyStreak(workouts);
 
     return {
       'totalWorkouts': workouts.length,
@@ -43,26 +46,59 @@ final workoutStatsProvider = StreamProvider<Map<String, dynamic>>((ref) {
       'thisMonth': thisMonth,
       'totalVolume': totalVolume,
       'workouts': workouts,
+      'currentStreak': streakData.currentStreak,
+      'bestStreak': streakData.bestStreak,
     };
   });
 });
 
+// ─── Global Volume Time Range Provider ───
+final volumeTimeRangeProvider = NotifierProvider<VolumeTimeRangeNotifier, String>(
+  VolumeTimeRangeNotifier.new,
+);
+
+class VolumeTimeRangeNotifier extends Notifier<String> {
+  @override
+  String build() => '3m';
+
+  void setRange(String range) => state = range;
+}
+
 // ─── Global Volume Chart Provider ───
 final globalVolumeChartProvider = StreamProvider<List<ChartDataPoint>>((ref) {
   final db = ref.watch(databaseProvider);
+  final timeRange = ref.watch(volumeTimeRangeProvider);
 
-  return (db.select(db.workouts)
-        ..where((w) => w.isTemplate.equals(false))
-        ..orderBy([(w) => OrderingTerm.asc(w.startTime)]))
-      .watch()
-      .asyncMap((workouts) async {
+  DateTime? startDate;
+  final now = DateTime.now();
+  if (timeRange == '1m') startDate = now.subtract(const Duration(days: 30));
+  else if (timeRange == '3m') startDate = now.subtract(const Duration(days: 90));
+  else if (timeRange == '6m') startDate = now.subtract(const Duration(days: 180));
+  else if (timeRange == '1y') startDate = now.subtract(const Duration(days: 365));
+
+  var query = db.select(db.workouts)..where((w) => w.isTemplate.equals(false));
+  if (startDate != null) {
+    query.where((w) => w.startTime.isBiggerOrEqualValue(startDate!));
+  }
+  query.orderBy([(w) => OrderingTerm.asc(w.startTime)]);
+
+  return query.watch().asyncMap((workouts) async {
     final points = <ChartDataPoint>[];
+    if (workouts.isEmpty) return points;
+
+    final workoutIds = workouts.map((w) => w.id).toList();
+    final allSets = await (db.select(db.workoutSets)
+      ..where((s) => s.workoutId.isIn(workoutIds))).get();
+    
+    final setsByWorkout = <int, List<WorkoutSet>>{};
+    for (final s in allSets) {
+      setsByWorkout.putIfAbsent(s.workoutId, () => []).add(s);
+    }
 
     for (final workout in workouts) {
-      final sets = await db.getSetsForWorkout(workout.id);
+      final sets = setsByWorkout[workout.id] ?? [];
       
       double workoutVolume = 0;
-
       for (final s in sets.where((s) => s.isCompleted && s.weight != null && s.reps != null)) {
          workoutVolume += (s.weight! * s.reps!);
       }
@@ -83,7 +119,7 @@ final globalVolumeChartProvider = StreamProvider<List<ChartDataPoint>>((ref) {
 });
 
 // ─── Muscle Distribution Provider ───
-final muscleDistributionProvider = StreamProvider<Map<String, int>>((ref) {
+final muscleDistributionProvider = StreamProvider<Map<String, double>>((ref) {
   final db = ref.watch(databaseProvider);
   final thirtyDaysAgo = DateTime.now().subtract(const Duration(days: 30));
 
@@ -92,23 +128,42 @@ final muscleDistributionProvider = StreamProvider<Map<String, int>>((ref) {
         ..where((w) => w.startTime.isBiggerOrEqualValue(thirtyDaysAgo)))
       .watch()
       .asyncMap((workouts) async {
-    final distribution = <String, int>{};
+    final distribution = <String, double>{};
+    if (workouts.isEmpty) return distribution;
+
+    final workoutIds = workouts.map((w) => w.id).toList();
+    final allSets = await (db.select(db.workoutSets)
+      ..where((s) => s.workoutId.isIn(workoutIds))).get();
+    
+    final exerciseIds = allSets.map((s) => s.exerciseId).toSet();
+    if (exerciseIds.isEmpty) return distribution;
+
+    final exercises = await (db.select(db.exercises)
+      ..where((e) => e.id.isIn(exerciseIds))).get();
+    final exerciseMap = {for (final e in exercises) e.id: e};
+
+    final setsByWorkout = <int, List<WorkoutSet>>{};
+    for (final s in allSets) {
+      setsByWorkout.putIfAbsent(s.workoutId, () => []).add(s);
+    }
 
     for (final workout in workouts) {
-      final sets = await db.getSetsForWorkout(workout.id);
-      final exerciseIds = sets.map((s) => s.exerciseId).toSet();
+      final sets = setsByWorkout[workout.id] ?? [];
+      final uniqueExerciseIds = sets.map((s) => s.exerciseId).toSet();
 
-      for (final exerciseId in exerciseIds) {
-        try {
-          final exercise = await (db.select(db.exercises)
-                ..where((e) => e.id.equals(exerciseId)))
-              .getSingleOrNull();
-
-          if (exercise != null) {
-            distribution[exercise.primaryMuscle] =
-                (distribution[exercise.primaryMuscle] ?? 0) + 1;
+      for (final exerciseId in uniqueExerciseIds) {
+        final exercise = exerciseMap[exerciseId];
+        if (exercise != null) {
+          distribution[exercise.primaryMuscle] =
+              (distribution[exercise.primaryMuscle] ?? 0.0) + 1.0;
+          
+          if (exercise.secondaryMuscles.isNotEmpty) {
+            final secondaries = exercise.secondaryMuscles.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty);
+            for (final secondary in secondaries) {
+              distribution[secondary] = (distribution[secondary] ?? 0.0) + 0.5;
+            }
           }
-        } catch (_) {}
+        }
       }
     }
 
@@ -125,34 +180,62 @@ final muscleRecoveryProvider = StreamProvider<Map<String, double>>((ref) {
       .watch()
       .asyncMap((workouts) async {
     final lastTrained = <String, DateTime>{};
+    if (workouts.isEmpty) return <String, double>{};
+
+    final workoutIds = workouts.map((w) => w.id).toList();
+    final allSets = await (db.select(db.workoutSets)
+      ..where((s) => s.workoutId.isIn(workoutIds))).get();
+    
+    final exerciseIds = allSets.map((s) => s.exerciseId).toSet();
+    if (exerciseIds.isEmpty) return <String, double>{};
+
+    final exercises = await (db.select(db.exercises)
+      ..where((e) => e.id.isIn(exerciseIds))).get();
+    final exerciseMap = {for (final e in exercises) e.id: e};
+
+    final setsByWorkout = <int, List<WorkoutSet>>{};
+    for (final s in allSets) {
+      setsByWorkout.putIfAbsent(s.workoutId, () => []).add(s);
+    }
 
     for (final workout in workouts) {
-      final sets = await db.getSetsForWorkout(workout.id);
-      final exerciseIds = sets.map((s) => s.exerciseId).toSet();
+      final sets = setsByWorkout[workout.id] ?? [];
+      final uniqueExerciseIds = sets.map((s) => s.exerciseId).toSet();
 
-      for (final exerciseId in exerciseIds) {
-        try {
-          final exercise = await (db.select(db.exercises)
-                ..where((e) => e.id.equals(exerciseId)))
-              .getSingleOrNull();
-
-          if (exercise != null) {
-            final muscle = exercise.primaryMuscle;
-            if (!lastTrained.containsKey(muscle)) {
-              lastTrained[muscle] = workout.startTime;
-            } else if (workout.startTime.isAfter(lastTrained[muscle]!)) {
-              lastTrained[muscle] = workout.startTime;
-            }
+      for (final exerciseId in uniqueExerciseIds) {
+        final exercise = exerciseMap[exerciseId];
+        if (exercise != null) {
+          final muscle = exercise.primaryMuscle;
+          if (!lastTrained.containsKey(muscle)) {
+            lastTrained[muscle] = workout.startTime;
+          } else if (workout.startTime.isAfter(lastTrained[muscle]!)) {
+            lastTrained[muscle] = workout.startTime;
           }
-        } catch (_) {}
+        }
       }
     }
 
     final recovery = <String, double>{};
     final now = DateTime.now();
+    
+    final customRecoveryHours = <String, double>{
+      'legs': 72.0,
+      'chest': 48.0,
+      'back': 48.0,
+      'shoulders': 48.0,
+      'arms': 24.0,
+      'biceps': 24.0,
+      'triceps': 24.0,
+      'core': 24.0,
+      'forearms': 24.0,
+      'calves': 24.0,
+      'glutes': 48.0,
+    };
+
     for (final entry in lastTrained.entries) {
       final hoursElapsed = now.difference(entry.value).inHours.toDouble();
-      double percent = hoursElapsed / 72.0;
+      final targetRecovery = customRecoveryHours[entry.key.toLowerCase()] ?? 48.0;
+      double percent = hoursElapsed / targetRecovery;
       if (percent > 1.0) percent = 1.0;
       recovery[entry.key] = percent;
     }
@@ -286,6 +369,28 @@ class _AnalyticsTabScreenState extends ConsumerState<AnalyticsTabScreen> {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _StatCard(
+                            title: 'Current Streak',
+                            value: '${stats['currentStreak']} wks',
+                            icon: Icons.local_fire_department,
+                            color: Colors.orange,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _StatCard(
+                            title: 'Best Streak',
+                            value: '${stats['bestStreak']} wks',
+                            icon: Icons.emoji_events,
+                            color: Colors.amber,
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 );
               },
@@ -319,12 +424,33 @@ class _AnalyticsTabScreenState extends ConsumerState<AnalyticsTabScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
-                    'TOTAL VOLUME',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: theme.colorScheme.outline,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'TOTAL VOLUME',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: theme.colorScheme.outline,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SegmentedButton<String>(
+                        segments: const [
+                          ButtonSegment(value: '1m', label: Text('1M')),
+                          ButtonSegment(value: '3m', label: Text('3M')),
+                          ButtonSegment(value: '6m', label: Text('6M')),
+                          ButtonSegment(value: 'all', label: Text('ALL')),
+                        ],
+                        selected: {ref.watch(volumeTimeRangeProvider)},
+                        onSelectionChanged: (set) {
+                          ref.read(volumeTimeRangeProvider.notifier).setRange(set.first);
+                        },
+                        style: SegmentedButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          textStyle: const TextStyle(fontSize: 10),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 16),
                   
@@ -402,7 +528,7 @@ class _AnalyticsTabScreenState extends ConsumerState<AnalyticsTabScreen> {
                     );
                   }
 
-                  final total = distribution.values.fold<int>(0, (sum, count) => sum + count);
+                  final total = distribution.values.fold<double>(0.0, (sum, count) => sum + count);
                   final sorted = distribution.entries.toList()
                     ..sort((a, b) => b.value.compareTo(a.value));
 
@@ -422,7 +548,7 @@ class _AnalyticsTabScreenState extends ConsumerState<AnalyticsTabScreen> {
                               children: [
                                 Text(entry.key, style: theme.textTheme.bodyMedium),
                                 Text(
-                                  '${(percentage * 100).toInt()}% (${entry.value})',
+                                  '${(percentage * 100).toInt()}% (${entry.value.toStringAsFixed(1)})',
                                   style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold),
                                 ),
                               ],

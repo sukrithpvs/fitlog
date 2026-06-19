@@ -63,12 +63,16 @@ class HistoryTabScreen extends ConsumerWidget {
             );
           }
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: workouts.length,
-            itemBuilder: (context, index) {
-              final workout = workouts[index];
-              final duration = workout.endTime?.difference(workout.startTime);
+          return RefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(workoutHistoryProvider);
+            },
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: workouts.length,
+              itemBuilder: (context, index) {
+                final workout = workouts[index];
+                final duration = workout.endTime?.difference(workout.startTime);
 
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
@@ -143,8 +147,9 @@ class HistoryTabScreen extends ConsumerWidget {
                 ),
               );
             },
-          );
-        },
+          ),
+        );
+      },
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, stack) => Center(child: Text('Error: $err')),
       ),

@@ -122,6 +122,21 @@ class $ExercisesTable extends Exercises
     requiredDuringInsert: false,
     defaultValue: currentDateAndTime,
   );
+  static const VerificationMeta _isDeletedMeta = const VerificationMeta(
+    'isDeleted',
+  );
+  @override
+  late final GeneratedColumn<bool> isDeleted = GeneratedColumn<bool>(
+    'is_deleted',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_deleted" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -134,6 +149,7 @@ class $ExercisesTable extends Exercises
     isCustom,
     notes,
     createdAt,
+    isDeleted,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -221,6 +237,12 @@ class $ExercisesTable extends Exercises
         createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
       );
     }
+    if (data.containsKey('is_deleted')) {
+      context.handle(
+        _isDeletedMeta,
+        isDeleted.isAcceptableOrUnknown(data['is_deleted']!, _isDeletedMeta),
+      );
+    }
     return context;
   }
 
@@ -270,6 +292,10 @@ class $ExercisesTable extends Exercises
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      isDeleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_deleted'],
+      )!,
     );
   }
 
@@ -290,6 +316,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
   final bool isCustom;
   final String? notes;
   final DateTime createdAt;
+  final bool isDeleted;
   const Exercise({
     required this.id,
     required this.uuid,
@@ -301,6 +328,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     required this.isCustom,
     this.notes,
     required this.createdAt,
+    required this.isDeleted,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -317,6 +345,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       map['notes'] = Variable<String>(notes);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
+    map['is_deleted'] = Variable<bool>(isDeleted);
     return map;
   }
 
@@ -334,6 +363,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
           ? const Value.absent()
           : Value(notes),
       createdAt: Value(createdAt),
+      isDeleted: Value(isDeleted),
     );
   }
 
@@ -353,6 +383,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       isCustom: serializer.fromJson<bool>(json['isCustom']),
       notes: serializer.fromJson<String?>(json['notes']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      isDeleted: serializer.fromJson<bool>(json['isDeleted']),
     );
   }
   @override
@@ -369,6 +400,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       'isCustom': serializer.toJson<bool>(isCustom),
       'notes': serializer.toJson<String?>(notes),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'isDeleted': serializer.toJson<bool>(isDeleted),
     };
   }
 
@@ -383,6 +415,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     bool? isCustom,
     Value<String?> notes = const Value.absent(),
     DateTime? createdAt,
+    bool? isDeleted,
   }) => Exercise(
     id: id ?? this.id,
     uuid: uuid ?? this.uuid,
@@ -394,6 +427,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     isCustom: isCustom ?? this.isCustom,
     notes: notes.present ? notes.value : this.notes,
     createdAt: createdAt ?? this.createdAt,
+    isDeleted: isDeleted ?? this.isDeleted,
   );
   Exercise copyWithCompanion(ExercisesCompanion data) {
     return Exercise(
@@ -413,6 +447,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       isCustom: data.isCustom.present ? data.isCustom.value : this.isCustom,
       notes: data.notes.present ? data.notes.value : this.notes,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      isDeleted: data.isDeleted.present ? data.isDeleted.value : this.isDeleted,
     );
   }
 
@@ -428,7 +463,8 @@ class Exercise extends DataClass implements Insertable<Exercise> {
           ..write('trackingType: $trackingType, ')
           ..write('isCustom: $isCustom, ')
           ..write('notes: $notes, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('isDeleted: $isDeleted')
           ..write(')'))
         .toString();
   }
@@ -445,6 +481,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     isCustom,
     notes,
     createdAt,
+    isDeleted,
   );
   @override
   bool operator ==(Object other) =>
@@ -459,7 +496,8 @@ class Exercise extends DataClass implements Insertable<Exercise> {
           other.trackingType == this.trackingType &&
           other.isCustom == this.isCustom &&
           other.notes == this.notes &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.isDeleted == this.isDeleted);
 }
 
 class ExercisesCompanion extends UpdateCompanion<Exercise> {
@@ -473,6 +511,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
   final Value<bool> isCustom;
   final Value<String?> notes;
   final Value<DateTime> createdAt;
+  final Value<bool> isDeleted;
   const ExercisesCompanion({
     this.id = const Value.absent(),
     this.uuid = const Value.absent(),
@@ -484,6 +523,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     this.isCustom = const Value.absent(),
     this.notes = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.isDeleted = const Value.absent(),
   });
   ExercisesCompanion.insert({
     this.id = const Value.absent(),
@@ -496,6 +536,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     this.isCustom = const Value.absent(),
     this.notes = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.isDeleted = const Value.absent(),
   }) : uuid = Value(uuid),
        name = Value(name),
        primaryMuscle = Value(primaryMuscle),
@@ -511,6 +552,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     Expression<bool>? isCustom,
     Expression<String>? notes,
     Expression<DateTime>? createdAt,
+    Expression<bool>? isDeleted,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -523,6 +565,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
       if (isCustom != null) 'is_custom': isCustom,
       if (notes != null) 'notes': notes,
       if (createdAt != null) 'created_at': createdAt,
+      if (isDeleted != null) 'is_deleted': isDeleted,
     });
   }
 
@@ -537,6 +580,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     Value<bool>? isCustom,
     Value<String?>? notes,
     Value<DateTime>? createdAt,
+    Value<bool>? isDeleted,
   }) {
     return ExercisesCompanion(
       id: id ?? this.id,
@@ -549,6 +593,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
       isCustom: isCustom ?? this.isCustom,
       notes: notes ?? this.notes,
       createdAt: createdAt ?? this.createdAt,
+      isDeleted: isDeleted ?? this.isDeleted,
     );
   }
 
@@ -585,6 +630,9 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (isDeleted.present) {
+      map['is_deleted'] = Variable<bool>(isDeleted.value);
+    }
     return map;
   }
 
@@ -600,7 +648,8 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
           ..write('trackingType: $trackingType, ')
           ..write('isCustom: $isCustom, ')
           ..write('notes: $notes, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('isDeleted: $isDeleted')
           ..write(')'))
         .toString();
   }
@@ -655,8 +704,23 @@ class $RoutineFoldersTable extends RoutineFolders
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _isDeletedMeta = const VerificationMeta(
+    'isDeleted',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, uuid, name, sortOrder];
+  late final GeneratedColumn<bool> isDeleted = GeneratedColumn<bool>(
+    'is_deleted',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_deleted" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, uuid, name, sortOrder, isDeleted];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -694,6 +758,12 @@ class $RoutineFoldersTable extends RoutineFolders
         sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
       );
     }
+    if (data.containsKey('is_deleted')) {
+      context.handle(
+        _isDeletedMeta,
+        isDeleted.isAcceptableOrUnknown(data['is_deleted']!, _isDeletedMeta),
+      );
+    }
     return context;
   }
 
@@ -719,6 +789,10 @@ class $RoutineFoldersTable extends RoutineFolders
         DriftSqlType.int,
         data['${effectivePrefix}sort_order'],
       )!,
+      isDeleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_deleted'],
+      )!,
     );
   }
 
@@ -733,11 +807,13 @@ class RoutineFolder extends DataClass implements Insertable<RoutineFolder> {
   final String uuid;
   final String name;
   final int sortOrder;
+  final bool isDeleted;
   const RoutineFolder({
     required this.id,
     required this.uuid,
     required this.name,
     required this.sortOrder,
+    required this.isDeleted,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -746,6 +822,7 @@ class RoutineFolder extends DataClass implements Insertable<RoutineFolder> {
     map['uuid'] = Variable<String>(uuid);
     map['name'] = Variable<String>(name);
     map['sort_order'] = Variable<int>(sortOrder);
+    map['is_deleted'] = Variable<bool>(isDeleted);
     return map;
   }
 
@@ -755,6 +832,7 @@ class RoutineFolder extends DataClass implements Insertable<RoutineFolder> {
       uuid: Value(uuid),
       name: Value(name),
       sortOrder: Value(sortOrder),
+      isDeleted: Value(isDeleted),
     );
   }
 
@@ -768,6 +846,7 @@ class RoutineFolder extends DataClass implements Insertable<RoutineFolder> {
       uuid: serializer.fromJson<String>(json['uuid']),
       name: serializer.fromJson<String>(json['name']),
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      isDeleted: serializer.fromJson<bool>(json['isDeleted']),
     );
   }
   @override
@@ -778,6 +857,7 @@ class RoutineFolder extends DataClass implements Insertable<RoutineFolder> {
       'uuid': serializer.toJson<String>(uuid),
       'name': serializer.toJson<String>(name),
       'sortOrder': serializer.toJson<int>(sortOrder),
+      'isDeleted': serializer.toJson<bool>(isDeleted),
     };
   }
 
@@ -786,11 +866,13 @@ class RoutineFolder extends DataClass implements Insertable<RoutineFolder> {
     String? uuid,
     String? name,
     int? sortOrder,
+    bool? isDeleted,
   }) => RoutineFolder(
     id: id ?? this.id,
     uuid: uuid ?? this.uuid,
     name: name ?? this.name,
     sortOrder: sortOrder ?? this.sortOrder,
+    isDeleted: isDeleted ?? this.isDeleted,
   );
   RoutineFolder copyWithCompanion(RoutineFoldersCompanion data) {
     return RoutineFolder(
@@ -798,6 +880,7 @@ class RoutineFolder extends DataClass implements Insertable<RoutineFolder> {
       uuid: data.uuid.present ? data.uuid.value : this.uuid,
       name: data.name.present ? data.name.value : this.name,
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      isDeleted: data.isDeleted.present ? data.isDeleted.value : this.isDeleted,
     );
   }
 
@@ -807,13 +890,14 @@ class RoutineFolder extends DataClass implements Insertable<RoutineFolder> {
           ..write('id: $id, ')
           ..write('uuid: $uuid, ')
           ..write('name: $name, ')
-          ..write('sortOrder: $sortOrder')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('isDeleted: $isDeleted')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, uuid, name, sortOrder);
+  int get hashCode => Object.hash(id, uuid, name, sortOrder, isDeleted);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -821,7 +905,8 @@ class RoutineFolder extends DataClass implements Insertable<RoutineFolder> {
           other.id == this.id &&
           other.uuid == this.uuid &&
           other.name == this.name &&
-          other.sortOrder == this.sortOrder);
+          other.sortOrder == this.sortOrder &&
+          other.isDeleted == this.isDeleted);
 }
 
 class RoutineFoldersCompanion extends UpdateCompanion<RoutineFolder> {
@@ -829,17 +914,20 @@ class RoutineFoldersCompanion extends UpdateCompanion<RoutineFolder> {
   final Value<String> uuid;
   final Value<String> name;
   final Value<int> sortOrder;
+  final Value<bool> isDeleted;
   const RoutineFoldersCompanion({
     this.id = const Value.absent(),
     this.uuid = const Value.absent(),
     this.name = const Value.absent(),
     this.sortOrder = const Value.absent(),
+    this.isDeleted = const Value.absent(),
   });
   RoutineFoldersCompanion.insert({
     this.id = const Value.absent(),
     required String uuid,
     required String name,
     this.sortOrder = const Value.absent(),
+    this.isDeleted = const Value.absent(),
   }) : uuid = Value(uuid),
        name = Value(name);
   static Insertable<RoutineFolder> custom({
@@ -847,12 +935,14 @@ class RoutineFoldersCompanion extends UpdateCompanion<RoutineFolder> {
     Expression<String>? uuid,
     Expression<String>? name,
     Expression<int>? sortOrder,
+    Expression<bool>? isDeleted,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (uuid != null) 'uuid': uuid,
       if (name != null) 'name': name,
       if (sortOrder != null) 'sort_order': sortOrder,
+      if (isDeleted != null) 'is_deleted': isDeleted,
     });
   }
 
@@ -861,12 +951,14 @@ class RoutineFoldersCompanion extends UpdateCompanion<RoutineFolder> {
     Value<String>? uuid,
     Value<String>? name,
     Value<int>? sortOrder,
+    Value<bool>? isDeleted,
   }) {
     return RoutineFoldersCompanion(
       id: id ?? this.id,
       uuid: uuid ?? this.uuid,
       name: name ?? this.name,
       sortOrder: sortOrder ?? this.sortOrder,
+      isDeleted: isDeleted ?? this.isDeleted,
     );
   }
 
@@ -885,6 +977,9 @@ class RoutineFoldersCompanion extends UpdateCompanion<RoutineFolder> {
     if (sortOrder.present) {
       map['sort_order'] = Variable<int>(sortOrder.value);
     }
+    if (isDeleted.present) {
+      map['is_deleted'] = Variable<bool>(isDeleted.value);
+    }
     return map;
   }
 
@@ -894,7 +989,8 @@ class RoutineFoldersCompanion extends UpdateCompanion<RoutineFolder> {
           ..write('id: $id, ')
           ..write('uuid: $uuid, ')
           ..write('name: $name, ')
-          ..write('sortOrder: $sortOrder')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('isDeleted: $isDeleted')
           ..write(')'))
         .toString();
   }
@@ -1019,6 +1115,21 @@ class $WorkoutsTable extends Workouts with TableInfo<$WorkoutsTable, Workout> {
     requiredDuringInsert: false,
     defaultValue: currentDateAndTime,
   );
+  static const VerificationMeta _isDeletedMeta = const VerificationMeta(
+    'isDeleted',
+  );
+  @override
+  late final GeneratedColumn<bool> isDeleted = GeneratedColumn<bool>(
+    'is_deleted',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_deleted" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1031,6 +1142,7 @@ class $WorkoutsTable extends Workouts with TableInfo<$WorkoutsTable, Workout> {
     notes,
     intensityRating,
     createdAt,
+    isDeleted,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1110,6 +1222,12 @@ class $WorkoutsTable extends Workouts with TableInfo<$WorkoutsTable, Workout> {
         createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
       );
     }
+    if (data.containsKey('is_deleted')) {
+      context.handle(
+        _isDeletedMeta,
+        isDeleted.isAcceptableOrUnknown(data['is_deleted']!, _isDeletedMeta),
+      );
+    }
     return context;
   }
 
@@ -1159,6 +1277,10 @@ class $WorkoutsTable extends Workouts with TableInfo<$WorkoutsTable, Workout> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      isDeleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_deleted'],
+      )!,
     );
   }
 
@@ -1179,6 +1301,7 @@ class Workout extends DataClass implements Insertable<Workout> {
   final String? notes;
   final int? intensityRating;
   final DateTime createdAt;
+  final bool isDeleted;
   const Workout({
     required this.id,
     required this.uuid,
@@ -1190,6 +1313,7 @@ class Workout extends DataClass implements Insertable<Workout> {
     this.notes,
     this.intensityRating,
     required this.createdAt,
+    required this.isDeleted,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1212,6 +1336,7 @@ class Workout extends DataClass implements Insertable<Workout> {
       map['intensity_rating'] = Variable<int>(intensityRating);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
+    map['is_deleted'] = Variable<bool>(isDeleted);
     return map;
   }
 
@@ -1235,6 +1360,7 @@ class Workout extends DataClass implements Insertable<Workout> {
           ? const Value.absent()
           : Value(intensityRating),
       createdAt: Value(createdAt),
+      isDeleted: Value(isDeleted),
     );
   }
 
@@ -1254,6 +1380,7 @@ class Workout extends DataClass implements Insertable<Workout> {
       notes: serializer.fromJson<String?>(json['notes']),
       intensityRating: serializer.fromJson<int?>(json['intensityRating']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      isDeleted: serializer.fromJson<bool>(json['isDeleted']),
     );
   }
   @override
@@ -1270,6 +1397,7 @@ class Workout extends DataClass implements Insertable<Workout> {
       'notes': serializer.toJson<String?>(notes),
       'intensityRating': serializer.toJson<int?>(intensityRating),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'isDeleted': serializer.toJson<bool>(isDeleted),
     };
   }
 
@@ -1284,6 +1412,7 @@ class Workout extends DataClass implements Insertable<Workout> {
     Value<String?> notes = const Value.absent(),
     Value<int?> intensityRating = const Value.absent(),
     DateTime? createdAt,
+    bool? isDeleted,
   }) => Workout(
     id: id ?? this.id,
     uuid: uuid ?? this.uuid,
@@ -1297,6 +1426,7 @@ class Workout extends DataClass implements Insertable<Workout> {
         ? intensityRating.value
         : this.intensityRating,
     createdAt: createdAt ?? this.createdAt,
+    isDeleted: isDeleted ?? this.isDeleted,
   );
   Workout copyWithCompanion(WorkoutsCompanion data) {
     return Workout(
@@ -1314,6 +1444,7 @@ class Workout extends DataClass implements Insertable<Workout> {
           ? data.intensityRating.value
           : this.intensityRating,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      isDeleted: data.isDeleted.present ? data.isDeleted.value : this.isDeleted,
     );
   }
 
@@ -1329,7 +1460,8 @@ class Workout extends DataClass implements Insertable<Workout> {
           ..write('folderId: $folderId, ')
           ..write('notes: $notes, ')
           ..write('intensityRating: $intensityRating, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('isDeleted: $isDeleted')
           ..write(')'))
         .toString();
   }
@@ -1346,6 +1478,7 @@ class Workout extends DataClass implements Insertable<Workout> {
     notes,
     intensityRating,
     createdAt,
+    isDeleted,
   );
   @override
   bool operator ==(Object other) =>
@@ -1360,7 +1493,8 @@ class Workout extends DataClass implements Insertable<Workout> {
           other.folderId == this.folderId &&
           other.notes == this.notes &&
           other.intensityRating == this.intensityRating &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.isDeleted == this.isDeleted);
 }
 
 class WorkoutsCompanion extends UpdateCompanion<Workout> {
@@ -1374,6 +1508,7 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
   final Value<String?> notes;
   final Value<int?> intensityRating;
   final Value<DateTime> createdAt;
+  final Value<bool> isDeleted;
   const WorkoutsCompanion({
     this.id = const Value.absent(),
     this.uuid = const Value.absent(),
@@ -1385,6 +1520,7 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
     this.notes = const Value.absent(),
     this.intensityRating = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.isDeleted = const Value.absent(),
   });
   WorkoutsCompanion.insert({
     this.id = const Value.absent(),
@@ -1397,6 +1533,7 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
     this.notes = const Value.absent(),
     this.intensityRating = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.isDeleted = const Value.absent(),
   }) : uuid = Value(uuid),
        title = Value(title),
        startTime = Value(startTime);
@@ -1411,6 +1548,7 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
     Expression<String>? notes,
     Expression<int>? intensityRating,
     Expression<DateTime>? createdAt,
+    Expression<bool>? isDeleted,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1423,6 +1561,7 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
       if (notes != null) 'notes': notes,
       if (intensityRating != null) 'intensity_rating': intensityRating,
       if (createdAt != null) 'created_at': createdAt,
+      if (isDeleted != null) 'is_deleted': isDeleted,
     });
   }
 
@@ -1437,6 +1576,7 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
     Value<String?>? notes,
     Value<int?>? intensityRating,
     Value<DateTime>? createdAt,
+    Value<bool>? isDeleted,
   }) {
     return WorkoutsCompanion(
       id: id ?? this.id,
@@ -1449,6 +1589,7 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
       notes: notes ?? this.notes,
       intensityRating: intensityRating ?? this.intensityRating,
       createdAt: createdAt ?? this.createdAt,
+      isDeleted: isDeleted ?? this.isDeleted,
     );
   }
 
@@ -1485,6 +1626,9 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (isDeleted.present) {
+      map['is_deleted'] = Variable<bool>(isDeleted.value);
+    }
     return map;
   }
 
@@ -1500,7 +1644,8 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
           ..write('folderId: $folderId, ')
           ..write('notes: $notes, ')
           ..write('intensityRating: $intensityRating, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('isDeleted: $isDeleted')
           ..write(')'))
         .toString();
   }
@@ -1697,6 +1842,16 @@ class $WorkoutSetsTable extends WorkoutSets
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _exerciseSequenceIndexMeta =
+      const VerificationMeta('exerciseSequenceIndex');
+  @override
+  late final GeneratedColumn<int> exerciseSequenceIndex = GeneratedColumn<int>(
+    'exercise_sequence_index',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1715,6 +1870,7 @@ class $WorkoutSetsTable extends WorkoutSets
     completedAt,
     supersetId,
     isPersonalRecord,
+    exerciseSequenceIndex,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1849,6 +2005,15 @@ class $WorkoutSetsTable extends WorkoutSets
         ),
       );
     }
+    if (data.containsKey('exercise_sequence_index')) {
+      context.handle(
+        _exerciseSequenceIndexMeta,
+        exerciseSequenceIndex.isAcceptableOrUnknown(
+          data['exercise_sequence_index']!,
+          _exerciseSequenceIndexMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1922,6 +2087,10 @@ class $WorkoutSetsTable extends WorkoutSets
         DriftSqlType.bool,
         data['${effectivePrefix}is_personal_record'],
       )!,
+      exerciseSequenceIndex: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}exercise_sequence_index'],
+      ),
     );
   }
 
@@ -1948,6 +2117,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
   final DateTime? completedAt;
   final String? supersetId;
   final bool isPersonalRecord;
+  final int? exerciseSequenceIndex;
   const WorkoutSet({
     required this.id,
     required this.uuid,
@@ -1965,6 +2135,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
     this.completedAt,
     this.supersetId,
     required this.isPersonalRecord,
+    this.exerciseSequenceIndex,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1999,6 +2170,9 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
       map['superset_id'] = Variable<String>(supersetId);
     }
     map['is_personal_record'] = Variable<bool>(isPersonalRecord);
+    if (!nullToAbsent || exerciseSequenceIndex != null) {
+      map['exercise_sequence_index'] = Variable<int>(exerciseSequenceIndex);
+    }
     return map;
   }
 
@@ -2030,6 +2204,9 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
           ? const Value.absent()
           : Value(supersetId),
       isPersonalRecord: Value(isPersonalRecord),
+      exerciseSequenceIndex: exerciseSequenceIndex == null && nullToAbsent
+          ? const Value.absent()
+          : Value(exerciseSequenceIndex),
     );
   }
 
@@ -2055,6 +2232,9 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
       completedAt: serializer.fromJson<DateTime?>(json['completedAt']),
       supersetId: serializer.fromJson<String?>(json['supersetId']),
       isPersonalRecord: serializer.fromJson<bool>(json['isPersonalRecord']),
+      exerciseSequenceIndex: serializer.fromJson<int?>(
+        json['exerciseSequenceIndex'],
+      ),
     );
   }
   @override
@@ -2077,6 +2257,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
       'completedAt': serializer.toJson<DateTime?>(completedAt),
       'supersetId': serializer.toJson<String?>(supersetId),
       'isPersonalRecord': serializer.toJson<bool>(isPersonalRecord),
+      'exerciseSequenceIndex': serializer.toJson<int?>(exerciseSequenceIndex),
     };
   }
 
@@ -2097,6 +2278,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
     Value<DateTime?> completedAt = const Value.absent(),
     Value<String?> supersetId = const Value.absent(),
     bool? isPersonalRecord,
+    Value<int?> exerciseSequenceIndex = const Value.absent(),
   }) => WorkoutSet(
     id: id ?? this.id,
     uuid: uuid ?? this.uuid,
@@ -2118,6 +2300,9 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
     completedAt: completedAt.present ? completedAt.value : this.completedAt,
     supersetId: supersetId.present ? supersetId.value : this.supersetId,
     isPersonalRecord: isPersonalRecord ?? this.isPersonalRecord,
+    exerciseSequenceIndex: exerciseSequenceIndex.present
+        ? exerciseSequenceIndex.value
+        : this.exerciseSequenceIndex,
   );
   WorkoutSet copyWithCompanion(WorkoutSetsCompanion data) {
     return WorkoutSet(
@@ -2153,6 +2338,9 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
       isPersonalRecord: data.isPersonalRecord.present
           ? data.isPersonalRecord.value
           : this.isPersonalRecord,
+      exerciseSequenceIndex: data.exerciseSequenceIndex.present
+          ? data.exerciseSequenceIndex.value
+          : this.exerciseSequenceIndex,
     );
   }
 
@@ -2174,7 +2362,8 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
           ..write('isCompleted: $isCompleted, ')
           ..write('completedAt: $completedAt, ')
           ..write('supersetId: $supersetId, ')
-          ..write('isPersonalRecord: $isPersonalRecord')
+          ..write('isPersonalRecord: $isPersonalRecord, ')
+          ..write('exerciseSequenceIndex: $exerciseSequenceIndex')
           ..write(')'))
         .toString();
   }
@@ -2197,6 +2386,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
     completedAt,
     supersetId,
     isPersonalRecord,
+    exerciseSequenceIndex,
   );
   @override
   bool operator ==(Object other) =>
@@ -2217,7 +2407,8 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
           other.isCompleted == this.isCompleted &&
           other.completedAt == this.completedAt &&
           other.supersetId == this.supersetId &&
-          other.isPersonalRecord == this.isPersonalRecord);
+          other.isPersonalRecord == this.isPersonalRecord &&
+          other.exerciseSequenceIndex == this.exerciseSequenceIndex);
 }
 
 class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
@@ -2237,6 +2428,7 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
   final Value<DateTime?> completedAt;
   final Value<String?> supersetId;
   final Value<bool> isPersonalRecord;
+  final Value<int?> exerciseSequenceIndex;
   const WorkoutSetsCompanion({
     this.id = const Value.absent(),
     this.uuid = const Value.absent(),
@@ -2254,6 +2446,7 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
     this.completedAt = const Value.absent(),
     this.supersetId = const Value.absent(),
     this.isPersonalRecord = const Value.absent(),
+    this.exerciseSequenceIndex = const Value.absent(),
   });
   WorkoutSetsCompanion.insert({
     this.id = const Value.absent(),
@@ -2272,6 +2465,7 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
     this.completedAt = const Value.absent(),
     this.supersetId = const Value.absent(),
     this.isPersonalRecord = const Value.absent(),
+    this.exerciseSequenceIndex = const Value.absent(),
   }) : uuid = Value(uuid),
        workoutId = Value(workoutId),
        exerciseId = Value(exerciseId),
@@ -2294,6 +2488,7 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
     Expression<DateTime>? completedAt,
     Expression<String>? supersetId,
     Expression<bool>? isPersonalRecord,
+    Expression<int>? exerciseSequenceIndex,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -2312,6 +2507,8 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
       if (completedAt != null) 'completed_at': completedAt,
       if (supersetId != null) 'superset_id': supersetId,
       if (isPersonalRecord != null) 'is_personal_record': isPersonalRecord,
+      if (exerciseSequenceIndex != null)
+        'exercise_sequence_index': exerciseSequenceIndex,
     });
   }
 
@@ -2332,6 +2529,7 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
     Value<DateTime?>? completedAt,
     Value<String?>? supersetId,
     Value<bool>? isPersonalRecord,
+    Value<int?>? exerciseSequenceIndex,
   }) {
     return WorkoutSetsCompanion(
       id: id ?? this.id,
@@ -2350,6 +2548,8 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
       completedAt: completedAt ?? this.completedAt,
       supersetId: supersetId ?? this.supersetId,
       isPersonalRecord: isPersonalRecord ?? this.isPersonalRecord,
+      exerciseSequenceIndex:
+          exerciseSequenceIndex ?? this.exerciseSequenceIndex,
     );
   }
 
@@ -2404,6 +2604,11 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
     if (isPersonalRecord.present) {
       map['is_personal_record'] = Variable<bool>(isPersonalRecord.value);
     }
+    if (exerciseSequenceIndex.present) {
+      map['exercise_sequence_index'] = Variable<int>(
+        exerciseSequenceIndex.value,
+      );
+    }
     return map;
   }
 
@@ -2425,7 +2630,8 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
           ..write('isCompleted: $isCompleted, ')
           ..write('completedAt: $completedAt, ')
           ..write('supersetId: $supersetId, ')
-          ..write('isPersonalRecord: $isPersonalRecord')
+          ..write('isPersonalRecord: $isPersonalRecord, ')
+          ..write('exerciseSequenceIndex: $exerciseSequenceIndex')
           ..write(')'))
         .toString();
   }
@@ -3187,6 +3393,7 @@ typedef $$ExercisesTableCreateCompanionBuilder =
       Value<bool> isCustom,
       Value<String?> notes,
       Value<DateTime> createdAt,
+      Value<bool> isDeleted,
     });
 typedef $$ExercisesTableUpdateCompanionBuilder =
     ExercisesCompanion Function({
@@ -3200,6 +3407,7 @@ typedef $$ExercisesTableUpdateCompanionBuilder =
       Value<bool> isCustom,
       Value<String?> notes,
       Value<DateTime> createdAt,
+      Value<bool> isDeleted,
     });
 
 final class $$ExercisesTableReferences
@@ -3281,6 +3489,11 @@ class $$ExercisesTableFilterComposer
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3368,6 +3581,11 @@ class $$ExercisesTableOrderingComposer
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ExercisesTableAnnotationComposer
@@ -3414,6 +3632,9 @@ class $$ExercisesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get isDeleted =>
+      $composableBuilder(column: $table.isDeleted, builder: (column) => column);
 
   Expression<T> workoutSetsRefs<T extends Object>(
     Expression<T> Function($$WorkoutSetsTableAnnotationComposer a) f,
@@ -3479,6 +3700,7 @@ class $$ExercisesTableTableManager
                 Value<bool> isCustom = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<bool> isDeleted = const Value.absent(),
               }) => ExercisesCompanion(
                 id: id,
                 uuid: uuid,
@@ -3490,6 +3712,7 @@ class $$ExercisesTableTableManager
                 isCustom: isCustom,
                 notes: notes,
                 createdAt: createdAt,
+                isDeleted: isDeleted,
               ),
           createCompanionCallback:
               ({
@@ -3503,6 +3726,7 @@ class $$ExercisesTableTableManager
                 Value<bool> isCustom = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<bool> isDeleted = const Value.absent(),
               }) => ExercisesCompanion.insert(
                 id: id,
                 uuid: uuid,
@@ -3514,6 +3738,7 @@ class $$ExercisesTableTableManager
                 isCustom: isCustom,
                 notes: notes,
                 createdAt: createdAt,
+                isDeleted: isDeleted,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -3577,6 +3802,7 @@ typedef $$RoutineFoldersTableCreateCompanionBuilder =
       required String uuid,
       required String name,
       Value<int> sortOrder,
+      Value<bool> isDeleted,
     });
 typedef $$RoutineFoldersTableUpdateCompanionBuilder =
     RoutineFoldersCompanion Function({
@@ -3584,6 +3810,7 @@ typedef $$RoutineFoldersTableUpdateCompanionBuilder =
       Value<String> uuid,
       Value<String> name,
       Value<int> sortOrder,
+      Value<bool> isDeleted,
     });
 
 final class $$RoutineFoldersTableReferences
@@ -3643,6 +3870,11 @@ class $$RoutineFoldersTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<bool> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
+    builder: (column) => ColumnFilters(column),
+  );
+
   Expression<bool> workoutsRefs(
     Expression<bool> Function($$WorkoutsTableFilterComposer f) f,
   ) {
@@ -3697,6 +3929,11 @@ class $$RoutineFoldersTableOrderingComposer
     column: $table.sortOrder,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$RoutineFoldersTableAnnotationComposer
@@ -3719,6 +3956,9 @@ class $$RoutineFoldersTableAnnotationComposer
 
   GeneratedColumn<int> get sortOrder =>
       $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<bool> get isDeleted =>
+      $composableBuilder(column: $table.isDeleted, builder: (column) => column);
 
   Expression<T> workoutsRefs<T extends Object>(
     Expression<T> Function($$WorkoutsTableAnnotationComposer a) f,
@@ -3780,11 +4020,13 @@ class $$RoutineFoldersTableTableManager
                 Value<String> uuid = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
+                Value<bool> isDeleted = const Value.absent(),
               }) => RoutineFoldersCompanion(
                 id: id,
                 uuid: uuid,
                 name: name,
                 sortOrder: sortOrder,
+                isDeleted: isDeleted,
               ),
           createCompanionCallback:
               ({
@@ -3792,11 +4034,13 @@ class $$RoutineFoldersTableTableManager
                 required String uuid,
                 required String name,
                 Value<int> sortOrder = const Value.absent(),
+                Value<bool> isDeleted = const Value.absent(),
               }) => RoutineFoldersCompanion.insert(
                 id: id,
                 uuid: uuid,
                 name: name,
                 sortOrder: sortOrder,
+                isDeleted: isDeleted,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -3866,6 +4110,7 @@ typedef $$WorkoutsTableCreateCompanionBuilder =
       Value<String?> notes,
       Value<int?> intensityRating,
       Value<DateTime> createdAt,
+      Value<bool> isDeleted,
     });
 typedef $$WorkoutsTableUpdateCompanionBuilder =
     WorkoutsCompanion Function({
@@ -3879,6 +4124,7 @@ typedef $$WorkoutsTableUpdateCompanionBuilder =
       Value<String?> notes,
       Value<int?> intensityRating,
       Value<DateTime> createdAt,
+      Value<bool> isDeleted,
     });
 
 final class $$WorkoutsTableReferences
@@ -3972,6 +4218,11 @@ class $$WorkoutsTableFilterComposer
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4078,6 +4329,11 @@ class $$WorkoutsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$RoutineFoldersTableOrderingComposer get folderId {
     final $$RoutineFoldersTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -4141,6 +4397,9 @@ class $$WorkoutsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get isDeleted =>
+      $composableBuilder(column: $table.isDeleted, builder: (column) => column);
 
   $$RoutineFoldersTableAnnotationComposer get folderId {
     final $$RoutineFoldersTableAnnotationComposer composer = $composerBuilder(
@@ -4229,6 +4488,7 @@ class $$WorkoutsTableTableManager
                 Value<String?> notes = const Value.absent(),
                 Value<int?> intensityRating = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<bool> isDeleted = const Value.absent(),
               }) => WorkoutsCompanion(
                 id: id,
                 uuid: uuid,
@@ -4240,6 +4500,7 @@ class $$WorkoutsTableTableManager
                 notes: notes,
                 intensityRating: intensityRating,
                 createdAt: createdAt,
+                isDeleted: isDeleted,
               ),
           createCompanionCallback:
               ({
@@ -4253,6 +4514,7 @@ class $$WorkoutsTableTableManager
                 Value<String?> notes = const Value.absent(),
                 Value<int?> intensityRating = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<bool> isDeleted = const Value.absent(),
               }) => WorkoutsCompanion.insert(
                 id: id,
                 uuid: uuid,
@@ -4264,6 +4526,7 @@ class $$WorkoutsTableTableManager
                 notes: notes,
                 intensityRating: intensityRating,
                 createdAt: createdAt,
+                isDeleted: isDeleted,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -4369,6 +4632,7 @@ typedef $$WorkoutSetsTableCreateCompanionBuilder =
       Value<DateTime?> completedAt,
       Value<String?> supersetId,
       Value<bool> isPersonalRecord,
+      Value<int?> exerciseSequenceIndex,
     });
 typedef $$WorkoutSetsTableUpdateCompanionBuilder =
     WorkoutSetsCompanion Function({
@@ -4388,6 +4652,7 @@ typedef $$WorkoutSetsTableUpdateCompanionBuilder =
       Value<DateTime?> completedAt,
       Value<String?> supersetId,
       Value<bool> isPersonalRecord,
+      Value<int?> exerciseSequenceIndex,
     });
 
 final class $$WorkoutSetsTableReferences
@@ -4505,6 +4770,11 @@ class $$WorkoutSetsTableFilterComposer
 
   ColumnFilters<bool> get isPersonalRecord => $composableBuilder(
     column: $table.isPersonalRecord,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get exerciseSequenceIndex => $composableBuilder(
+    column: $table.exerciseSequenceIndex,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4634,6 +4904,11 @@ class $$WorkoutSetsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get exerciseSequenceIndex => $composableBuilder(
+    column: $table.exerciseSequenceIndex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$WorkoutsTableOrderingComposer get workoutId {
     final $$WorkoutsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -4746,6 +5021,11 @@ class $$WorkoutSetsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<int> get exerciseSequenceIndex => $composableBuilder(
+    column: $table.exerciseSequenceIndex,
+    builder: (column) => column,
+  );
+
   $$WorkoutsTableAnnotationComposer get workoutId {
     final $$WorkoutsTableAnnotationComposer composer = $composerBuilder(
       composer: this,
@@ -4837,6 +5117,7 @@ class $$WorkoutSetsTableTableManager
                 Value<DateTime?> completedAt = const Value.absent(),
                 Value<String?> supersetId = const Value.absent(),
                 Value<bool> isPersonalRecord = const Value.absent(),
+                Value<int?> exerciseSequenceIndex = const Value.absent(),
               }) => WorkoutSetsCompanion(
                 id: id,
                 uuid: uuid,
@@ -4854,6 +5135,7 @@ class $$WorkoutSetsTableTableManager
                 completedAt: completedAt,
                 supersetId: supersetId,
                 isPersonalRecord: isPersonalRecord,
+                exerciseSequenceIndex: exerciseSequenceIndex,
               ),
           createCompanionCallback:
               ({
@@ -4873,6 +5155,7 @@ class $$WorkoutSetsTableTableManager
                 Value<DateTime?> completedAt = const Value.absent(),
                 Value<String?> supersetId = const Value.absent(),
                 Value<bool> isPersonalRecord = const Value.absent(),
+                Value<int?> exerciseSequenceIndex = const Value.absent(),
               }) => WorkoutSetsCompanion.insert(
                 id: id,
                 uuid: uuid,
@@ -4890,6 +5173,7 @@ class $$WorkoutSetsTableTableManager
                 completedAt: completedAt,
                 supersetId: supersetId,
                 isPersonalRecord: isPersonalRecord,
+                exerciseSequenceIndex: exerciseSequenceIndex,
               ),
           withReferenceMapper: (p0) => p0
               .map(

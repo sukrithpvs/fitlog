@@ -2,7 +2,9 @@
 // FitLog entry point — initializes database, seeds data, launches app.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
 import 'core/database/database_provider.dart';
@@ -14,14 +16,32 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await NotificationService().init();
 
-  // Initialize the database and seed default exercises and routines
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    debugPrint('Global Error: \${details.exception}');
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    debugPrint('Async Global Error: \$error');
+    return true;
+  };
+
+  // Initialize the database
   final db = getDatabase();
-  await seedDefaultExercises(db);
-  await seedDefaultRoutines(db);
+  
+  // Seed default exercises and routines only on first launch
+  final prefs = await SharedPreferences.getInstance();
+  final isSeeded = prefs.getBool('isDataSeeded') ?? false;
+  if (!isSeeded) {
+    await seedDefaultExercises(db);
+    await seedDefaultRoutines(db);
+    await prefs.setBool('isDataSeeded', true);
+  }
+
+  final hasSeenOnboarding = prefs.getBool('hasSeenOnboarding') ?? false;
 
   runApp(
-    const ProviderScope(
-      child: FitLogApp(),
+    ProviderScope(
+      child: FitLogApp(hasSeenOnboarding: hasSeenOnboarding),
     ),
   );
 }

@@ -4,6 +4,8 @@ import '../../../core/database/app_database.dart';
 import '../../../core/database/database_provider.dart';
 import '../../../core/theme/app_colors.dart';
 import 'package:drift/drift.dart' as drift;
+import 'package:share_plus/share_plus.dart';
+import 'widgets/pr_celebration_overlay.dart';
 
 class WorkoutSummaryScreen extends ConsumerStatefulWidget {
   final int workoutId;
@@ -91,13 +93,15 @@ class _WorkoutSummaryScreenState extends ConsumerState<WorkoutSummaryScreen> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Hero Stats
-            Container(
+      body: PRCelebrationOverlay(
+        isPlaying: prSets.isNotEmpty,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Hero Stats
+              Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
                 color: theme.colorScheme.surfaceContainerHighest,
@@ -114,6 +118,22 @@ class _WorkoutSummaryScreenState extends ConsumerState<WorkoutSummaryScreen> {
                       _buildStatColumn('Volume', '${totalVolume.toStringAsFixed(0)} kg'),
                       _buildStatColumn('Sets', '${completedSets.length}'),
                     ],
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.share),
+                      label: const Text('Share Workout'),
+                      onPressed: () {
+                        final text = 'I just completed a workout: ${_workout!.title}!\n'
+                            'Duration: ${duration.inMinutes}m\n'
+                            'Volume: ${totalVolume.toStringAsFixed(0)} kg\n'
+                            'Sets: ${completedSets.length}\n\n'
+                            'Tracked with FitLog 💪';
+                        Share.share(text);
+                      },
+                    ),
                   ),
                 ],
               ),
@@ -155,6 +175,7 @@ class _WorkoutSummaryScreenState extends ConsumerState<WorkoutSummaryScreen> {
             }),
           ],
         ),
+      ),
       ),
     );
   }

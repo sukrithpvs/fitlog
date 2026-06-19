@@ -7,7 +7,7 @@ void main() {
   testWidgets('App smoke test', (WidgetTester tester) async {
     await tester.pumpWidget(
       const ProviderScope(
-        child: FitLogApp(),
+        child: FitLogApp(hasSeenOnboarding: true),
       ),
     );
     await tester.pumpAndSettle();

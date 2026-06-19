@@ -1,6 +1,7 @@
 // lib/features/workout/presentation/active_workout_screen.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:drift/drift.dart' hide Column;
 import 'package:go_router/go_router.dart';
@@ -13,6 +14,9 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../exercises/presentation/widgets/exercise_picker_modal.dart';
 import 'widgets/plate_calculator_modal.dart';
+import 'widgets/set_row_widget.dart';
+import 'widgets/rest_timer_widget.dart';
+import 'widgets/exercise_card_widget.dart';
 import '../../../core/utils/pr_detector.dart';
 import '../../../core/utils/notification_service.dart';
 import 'workout_summary_screen.dart';
@@ -41,6 +45,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
   final DateTime _startTime = DateTime.now();
   String _workoutTitle = '';
   Timer? _durationTimer;
+  Timer? _restTimer;
 
   // Controllers
   final Map<int, TextEditingController> _weightControllers = {};
@@ -48,6 +53,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
   final Map<int, TextEditingController> _timeControllers = {};
   final Map<int, TextEditingController> _distanceControllers = {};
   final Map<int, String> _trackingTypeCache = {};
+  final Map<String, String> _previousPerformanceCache = {};
 
   // Rest Timer State
   int? _activeRestSetId;
@@ -66,6 +72,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
 
   @override
   void dispose() {
+    _restTimer?.cancel();
     if (!widget.isEditing) {
       _durationTimer?.cancel();
     }
@@ -90,6 +97,16 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
       _workoutId = widget.workoutId!;
       final workout = await (db.select(db.workouts)..where((w) => w.id.equals(_workoutId))).getSingle();
       _workoutTitle = workout.title;
+      
+      // Preload tracking types
+      final sets = await db.getSetsForWorkout(_workoutId);
+      final exerciseIds = sets.map((s) => s.exerciseId).toSet();
+      if (exerciseIds.isNotEmpty) {
+        final exercises = await (db.select(db.exercises)..where((e) => e.id.isIn(exerciseIds))).get();
+        for (final ex in exercises) {
+          _trackingTypeCache[ex.id] = ex.trackingType;
+        }
+      }
     } else {
       _workoutId = await db.insertWorkout(
         WorkoutsCompanion.insert(
@@ -163,7 +180,17 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
         children: [
           // Rest Timer Banner
           if (_activeRestSetId != null && _restSecondsRemaining > 0)
-            _buildRestTimerBanner(),
+            RestTimerWidget(
+              secondsRemaining: _restSecondsRemaining,
+              onAdd30s: () => setState(() => _restSecondsRemaining += 30),
+              onSubtract30s: () => setState(() {
+                if (_restSecondsRemaining > 30) _restSecondsRemaining -= 30;
+              }),
+              onSkip: () => setState(() {
+                _activeRestSetId = null;
+                _restSecondsRemaining = 0;
+              }),
+            ),
 
           // Exercise List
           Expanded(
@@ -249,8 +276,24 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
                           final isSuperset = groupSets.first.supersetId != null;
 
                           return isSuperset
-                              ? _buildSupersetCard(context, groupSets)
-                              : _buildExerciseCard(context, groupSets.first.exerciseName, groupSets);
+                              ? SupersetCardWidget(
+                                  sets: groupSets,
+                                  exercises: groupSets.map((s) => s.exerciseName).toSet().toList(),
+                                  setsTableBuilder: (exName, exSets) => _buildSetsTable(context, exSets),
+                                  onDeleteExercise: _deleteExercise,
+                                  onAddExerciseToSuperset: _addExerciseToSuperset,
+                                  onUnlinkSuperset: _unlinkSuperset,
+                                  onAddSet: _addSet,
+                                )
+                              : ExerciseCardWidget(
+                                  exerciseName: groupSets.first.exerciseName,
+                                  sets: groupSets,
+                                  setsTable: _buildSetsTable(context, groupSets),
+                                  onDeleteExercise: _deleteExercise,
+                                  onCreateSuperset: _createSupersetFromCard,
+                                  onGenerateWarmup: _generateWarmupSets,
+                                  onAddSet: _addSet,
+                                );
                         },
                       ),
                     ),
@@ -260,214 +303,6 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildRestTimerBanner() {
-    final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      color: AppColors.accent,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.timer, color: Colors.white),
-              const SizedBox(width: 12),
-              Text(
-                'Rest: ${DateFormatter.timerSeconds(_restSecondsRemaining)}',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.remove_circle_outline, color: Colors.white),
-                onPressed: () => setState(() {
-                  if (_restSecondsRemaining > 30) _restSecondsRemaining -= 30;
-                }),
-              ),
-              IconButton(
-                icon: const Icon(Icons.add_circle_outline, color: Colors.white),
-                onPressed: () => setState(() => _restSecondsRemaining += 30),
-              ),
-              IconButton(
-                icon: const Icon(Icons.close, color: Colors.white),
-                onPressed: () => setState(() {
-                  _activeRestSetId = null;
-                  _restSecondsRemaining = 0;
-                }),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildExerciseCard(BuildContext context, String exerciseName, List<WorkoutSet> sets) {
-    final theme = Theme.of(context);
-    
-    final exerciseId = sets.first.exerciseId;
-    if (!_trackingTypeCache.containsKey(exerciseId)) {
-      _trackingTypeCache[exerciseId] = 'weight_reps'; // temporary default
-      ref.read(databaseProvider).getExerciseById(exerciseId).then((ex) {
-        if (mounted && _trackingTypeCache[exerciseId] != ex.trackingType) {
-          setState(() => _trackingTypeCache[exerciseId] = ex.trackingType);
-        }
-      });
-    }
-
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    exerciseName,
-                    style: theme.textTheme.titleMedium,
-                  ),
-                ),
-                PopupMenuButton<String>(
-                  icon: const Icon(Icons.more_vert),
-                  itemBuilder: (context) => [
-                    const PopupMenuItem(
-                      value: 'superset',
-                      child: Text('Create Superset'),
-                    ),
-                    const PopupMenuItem(
-                      value: 'warmup',
-                      child: Text('Generate Warm-ups'),
-                    ),
-                    const PopupMenuItem(
-                      value: 'delete',
-                      child: Text('Remove Exercise', style: TextStyle(color: Colors.red)),
-                    ),
-                  ],
-                  onSelected: (value) {
-                    if (value == 'delete') {
-                      _deleteExercise(sets);
-                    } else if (value == 'superset') {
-                      _createSupersetFromCard(sets.first);
-                    } else if (value == 'warmup') {
-                      _generateWarmupSets(sets);
-                    }
-                  },
-                ),
-                IconButton(
-                  icon: const Icon(Icons.add_circle_outline, size: 20),
-                  onPressed: () => _addSet(sets.first),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            _buildSetsTable(context, sets),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSupersetCard(BuildContext context, List<WorkoutSet> sets) {
-    final theme = Theme.of(context);
-    final exercises = sets.map((s) => s.exerciseName).toSet().toList();
-
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      shape: RoundedRectangleBorder(
-        side: BorderSide(color: AppColors.warning.withOpacity(0.5), width: 2),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.link, color: AppColors.warning),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'SUPERSET',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      color: AppColors.warning,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                PopupMenuButton<String>(
-                  icon: const Icon(Icons.more_vert),
-                  onSelected: (value) {
-                    if (value == 'delete') {
-                      _deleteExercise(sets);
-                    } else if (value == 'add_exercise') {
-                      _addExerciseToSuperset(sets.first.supersetId!);
-                    } else if (value == 'unlink') {
-                      _unlinkSuperset(sets);
-                    }
-                  },
-                  itemBuilder: (context) => [
-                    const PopupMenuItem(
-                      value: 'add_exercise',
-                      child: Text('Add Exercise'),
-                    ),
-                    const PopupMenuItem(
-                      value: 'unlink',
-                      child: Text('Unlink Superset'),
-                    ),
-                    const PopupMenuItem(
-                      value: 'delete',
-                      child: Text('Remove All', style: TextStyle(color: Colors.red)),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            ...exercises.map((exName) {
-              final exSets = sets.where((s) => s.exerciseName == exName).toList();
-              final letter = String.fromCharCode(65 + exercises.indexOf(exName)); // A, B, C...
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(letter, style: const TextStyle(fontWeight: FontWeight.bold)),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(exName, style: theme.textTheme.titleSmall)),
-                      IconButton(
-                        icon: const Icon(Icons.add_circle_outline, size: 20),
-                        onPressed: () => _addSet(exSets.first),
-                      ),
-                    ],
-                  ),
-                  _buildSetsTable(context, exSets),
-                  const SizedBox(height: 16),
-                ],
-              );
-            }),
-          ],
-        ),
       ),
     );
   }
@@ -525,146 +360,71 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
   }
 
   Widget _buildSetRow(BuildContext context, WorkoutSet set, int setNumber) {
-    final theme = Theme.of(context);
     final trackingType = _trackingTypeCache[set.exerciseId] ?? 'weight_reps';
-    
-    if (!_weightControllers.containsKey(set.id)) _weightControllers[set.id] = TextEditingController(text: set.weight?.toStringAsFixed(1).replaceAll('.0', '') ?? '');
-    if (!_repsControllers.containsKey(set.id)) _repsControllers[set.id] = TextEditingController(text: set.reps?.toString() ?? '');
-    if (!_timeControllers.containsKey(set.id)) {
-      String timeStr = '';
-      if (set.durationSeconds != null) {
-        final m = set.durationSeconds! ~/ 60;
-        final s = set.durationSeconds! % 60;
-        timeStr = '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
-      }
-      _timeControllers[set.id] = TextEditingController(text: timeStr);
-    }
-    if (!_distanceControllers.containsKey(set.id)) _distanceControllers[set.id] = TextEditingController(text: set.distanceMeters != null ? (set.distanceMeters! / 1000).toStringAsFixed(2).replaceAll('.00', '') : '');
-    
-    Widget buildCol1() {
-      if (trackingType == 'reps_only' || trackingType == 'time_only') return const Center(child: Text('-'));
-      if (trackingType == 'distance_time') {
-        return TextField(
-          controller: _distanceControllers[set.id],
-          decoration: const InputDecoration(hintText: '0.0', contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8), border: OutlineInputBorder()),
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          style: theme.textTheme.bodyMedium, textAlign: TextAlign.center,
-          onChanged: (v) {
-            final val = double.tryParse(v);
-            _updateSet(set.id, distanceMeters: val != null ? val * 1000 : null);
-          },
-        );
-      }
-      return TextField(
-        controller: _weightControllers[set.id],
-        decoration: const InputDecoration(hintText: '0', contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8), border: OutlineInputBorder()),
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        style: theme.textTheme.bodyMedium, textAlign: TextAlign.center,
-        onChanged: (v) => _updateSet(set.id, weight: double.tryParse(v)),
-      );
-    }
 
-    Widget buildCol2() {
-      if (trackingType == 'time_only' || trackingType == 'distance_time') {
-        return TextField(
-          controller: _timeControllers[set.id],
-          decoration: const InputDecoration(hintText: '00:00', contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8), border: OutlineInputBorder()),
-          keyboardType: TextInputType.datetime,
-          style: theme.textTheme.bodyMedium, textAlign: TextAlign.center,
-          onChanged: (v) {
-            if (v.length == 5 && v.contains(':')) {
-              final parts = v.split(':');
-              if (parts.length == 2) {
-                final m = int.tryParse(parts[0]) ?? 0;
-                final s = int.tryParse(parts[1]) ?? 0;
-                _updateSet(set.id, durationSeconds: (m * 60) + s);
-              }
-            } else if (v.isEmpty) {
-              _updateSet(set.id, durationSeconds: null);
-            }
-          },
+    return FutureBuilder<String>(
+      future: _getPreviousPerformance(set.exerciseId, set.setOrder),
+      builder: (context, snapshot) {
+        return Dismissible(
+          key: ValueKey(set.id),
+          direction: DismissDirection.endToStart,
+          background: Container(
+            color: Colors.red,
+            alignment: Alignment.centerRight,
+            padding: const EdgeInsets.only(right: 16),
+            child: const Icon(Icons.delete, color: Colors.white),
+          ),
+          onDismissed: (_) => _deleteSetWithUndo(set),
+          child: SetRowWidget(
+            set: set,
+            setNumber: setNumber,
+            trackingType: trackingType,
+            previousPerformance: snapshot.data ?? '—',
+            onUpdateSet: _updateSet,
+            onToggleComplete: _toggleSetComplete,
+            cycleSetType: () => _cycleSetType(set),
+            showRpeDialog: () => _showRpeDialog(set),
+          ),
         );
-      }
-      return TextField(
-        controller: _repsControllers[set.id],
-        decoration: const InputDecoration(hintText: '0', contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8), border: OutlineInputBorder()),
-        keyboardType: TextInputType.number,
-        style: theme.textTheme.bodyMedium, textAlign: TextAlign.center,
-        onChanged: (v) => _updateSet(set.id, reps: int.tryParse(v)),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          // Set number / Set Type with RPE indicator
-          SizedBox(
-            width: 50,
-            child: Row(
-              children: [
-                if (set.setType == 'drop')
-                  Icon(Icons.subdirectory_arrow_right, size: 16, color: theme.colorScheme.outline)
-                else
-                  const SizedBox(width: 16),
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () => _cycleSetType(set),
-                    onLongPress: () => _showRpeDialog(set),
-                    child: Stack(
-                      alignment: Alignment.center,
-                      clipBehavior: Clip.none,
-                      children: [
-                        _buildSetTypeIndicator(set, setNumber),
-                        if (set.rpe != null)
-                          Positioned(
-                            right: -2,
-                            top: -2,
-                            child: Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                color: _getRpeColor(set.rpe!),
-                                shape: BoxShape.circle,
-                                border: Border.all(color: theme.colorScheme.surface, width: 1.5),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: FutureBuilder<String>(
-              future: _getPreviousPerformance(set.exerciseId, set.setOrder),
-              builder: (context, snapshot) {
-                return Text(
-                  snapshot.data ?? '—',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.outline,
-                  ),
-                );
-              },
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(child: buildCol1()),
-          const SizedBox(width: 8),
-          Expanded(child: buildCol2()),
-          const SizedBox(width: 8),
-          IconButton(
-            icon: Icon(
-              set.isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
-              color: set.isCompleted ? AppColors.success : theme.colorScheme.outline,
-            ),
-            onPressed: () => _toggleSetComplete(set),
-          ),
-        ],
-      ),
+      },
     );
+  }
+
+  Future<void> _deleteSetWithUndo(WorkoutSet set) async {
+    final db = ref.read(databaseProvider);
+    await db.deleteWorkoutSet(set.id);
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Set deleted'),
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () async {
+              await db.insertWorkoutSet(
+                WorkoutSetsCompanion.insert(
+                  uuid: set.uuid,
+                  workoutId: set.workoutId,
+                  exerciseId: set.exerciseId,
+                  exerciseName: set.exerciseName,
+                  setOrder: set.setOrder,
+                  weight: Value(set.weight),
+                  reps: Value(set.reps),
+                  durationSeconds: Value(set.durationSeconds),
+                  distanceMeters: Value(set.distanceMeters),
+                  setType: Value(set.setType),
+                  rpe: Value(set.rpe),
+                  supersetId: Value(set.supersetId),
+                  isCompleted: Value(set.isCompleted),
+                  completedAt: Value(set.completedAt),
+                )
+              );
+            },
+          ),
+        ),
+      );
+    }
   }
 
   Color _getRpeColor(int rpe) {
@@ -754,15 +514,15 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
 
     if (set.setType == 'warmup') {
       label = 'W';
-      bgColor = AppColors.warning.withOpacity(0.2);
+      bgColor = AppColors.warning.withValues(alpha: 0.2);
       textColor = AppColors.warning;
     } else if (set.setType == 'drop') {
       label = 'D';
-      bgColor = AppColors.accent.withOpacity(0.2);
+      bgColor = AppColors.accent.withValues(alpha: 0.2);
       textColor = AppColors.accent;
     } else if (set.setType == 'failure') {
       label = 'F';
-      bgColor = AppColors.error.withOpacity(0.2);
+      bgColor = AppColors.error.withValues(alpha: 0.2);
       textColor = AppColors.error;
     }
 
@@ -785,7 +545,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
   }
 
   Future<void> _cycleSetType(WorkoutSet set) async {
-    final types = ['normal', 'warmup', 'drop', 'failure'];
+    final types = ['normal', 'warmup', 'drop', 'failure', 'partials'];
     final currentIndex = types.indexOf(set.setType);
     final nextIndex = (currentIndex + 1) % types.length;
     
@@ -837,6 +597,14 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
       ),
     );
 
+    if (newCompleted) {
+      if (isPR) {
+        HapticFeedback.heavyImpact();
+      } else {
+        HapticFeedback.mediumImpact();
+      }
+    }
+
     if (newCompleted && !widget.isEditing) {
       int suggestedRest = 90;
       try {
@@ -860,15 +628,18 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
   }
 
   void _startRestTimer() {
-    Future.delayed(const Duration(seconds: 1), () {
+    _restTimer?.cancel();
+    _restTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_restSecondsRemaining > 0 && mounted) {
         setState(() => _restSecondsRemaining--);
-        _startRestTimer();
       } else if (_restSecondsRemaining == 0) {
+        timer.cancel();
         if (mounted && _activeRestSetId != null) {
           setState(() => _activeRestSetId = null);
           NotificationService().showRestCompleteNotification();
         }
+      } else {
+        timer.cancel();
       }
     });
   }
@@ -881,16 +652,22 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
     );
 
     if (exercise != null) {
+      _trackingTypeCache[exercise.id] = exercise.trackingType;
       await _checkRecovery(exercise);
       final db = ref.read(databaseProvider);
+      final sets = await db.getSetsForWorkout(_workoutId);
+      final maxOrder = sets.isEmpty ? -1 : sets.map((s) => s.setOrder).reduce((a, b) => a > b ? a : b);
+      final exerciseSequenceIndex = sets.map((s) => s.exerciseId).toSet().length;
+
       await db.insertWorkoutSet(
         WorkoutSetsCompanion.insert(
           uuid: const Uuid().v4(),
           workoutId: _workoutId,
           exerciseId: exercise.id,
           exerciseName: exercise.name,
-          setOrder: 0,
+          setOrder: maxOrder + 1,
           setType: const Value('normal'),
+          exerciseSequenceIndex: Value(exerciseSequenceIndex),
         ),
       );
     }
@@ -904,6 +681,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
     );
 
     if (exercise != null) {
+      _trackingTypeCache[exercise.id] = exercise.trackingType;
       await _checkRecovery(exercise);
       final db = ref.read(databaseProvider);
       final supersetId = const Uuid().v4();
@@ -913,6 +691,10 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
             ..where((s) => s.workoutId.equals(_workoutId) & s.exerciseId.equals(sourceSet.exerciseId)))
           .write(WorkoutSetsCompanion(supersetId: Value(supersetId)));
 
+      final sets = await db.getSetsForWorkout(_workoutId);
+      final maxOrder = sets.isEmpty ? -1 : sets.map((s) => s.setOrder).reduce((a, b) => a > b ? a : b);
+      final exerciseSequenceIndex = sets.map((s) => s.exerciseId).toSet().length;
+
       // Add the new exercise to the superset
       await db.insertWorkoutSet(
         WorkoutSetsCompanion.insert(
@@ -920,9 +702,10 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
           workoutId: _workoutId,
           exerciseId: exercise.id,
           exerciseName: exercise.name,
-          setOrder: 0,
+          setOrder: maxOrder + 1,
           setType: const Value('normal'),
           supersetId: Value(supersetId),
+          exerciseSequenceIndex: Value(exerciseSequenceIndex),
         ),
       );
     }
@@ -936,17 +719,23 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
     );
 
     if (exercise != null) {
+      _trackingTypeCache[exercise.id] = exercise.trackingType;
       await _checkRecovery(exercise);
       final db = ref.read(databaseProvider);
+      final sets = await db.getSetsForWorkout(_workoutId);
+      final maxOrder = sets.isEmpty ? -1 : sets.map((s) => s.setOrder).reduce((a, b) => a > b ? a : b);
+      final exerciseSequenceIndex = sets.map((s) => s.exerciseId).toSet().length;
+
       await db.insertWorkoutSet(
         WorkoutSetsCompanion.insert(
           uuid: const Uuid().v4(),
           workoutId: _workoutId,
           exerciseId: exercise.id,
           exerciseName: exercise.name,
-          setOrder: 0,
+          setOrder: maxOrder + 1,
           setType: const Value('normal'),
           supersetId: Value(supersetId),
+          exerciseSequenceIndex: Value(exerciseSequenceIndex),
         ),
       );
     }
@@ -977,6 +766,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
         reps: Value(templateSet.reps),
         setType: Value(isDropSet ? 'drop' : 'normal'),
         supersetId: Value(templateSet.supersetId),
+        exerciseSequenceIndex: Value(templateSet.exerciseSequenceIndex),
       ),
     );
   }
@@ -1039,6 +829,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
         weight: Value(workingWeight * 0.5),
         reps: const Value(10),
         setType: const Value('warmup'),
+        exerciseSequenceIndex: Value(firstWorkingSet.exerciseSequenceIndex),
       ),
     );
     await db.insertWorkoutSet(
@@ -1051,20 +842,28 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
         weight: Value(workingWeight * 0.75),
         reps: const Value(5),
         setType: const Value('warmup'),
+        exerciseSequenceIndex: Value(firstWorkingSet.exerciseSequenceIndex),
       ),
     );
   }
 
   Future<String> _getPreviousPerformance(int exerciseId, int setOrder) async {
+    final cacheKey = '${exerciseId}_$setOrder';
+    if (_previousPerformanceCache.containsKey(cacheKey)) {
+      return _previousPerformanceCache[cacheKey]!;
+    }
     try {
       final db = ref.read(databaseProvider);
       final prevSet = await db.getPreviousSetPerformance(exerciseId, setOrder);
       if (prevSet != null && prevSet.workoutId != _workoutId) {
-        return '${prevSet.weight!.toStringAsFixed(0)}kg × ${prevSet.reps}';
+        final result = '${prevSet.weight!.toStringAsFixed(0)}kg × ${prevSet.reps}';
+        _previousPerformanceCache[cacheKey] = result;
+        return result;
       }
     } catch (e) {
       // Ignore errors
     }
+    _previousPerformanceCache[cacheKey] = '—';
     return '—';
   }
 
@@ -1097,6 +896,40 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
         _repsControllers.remove(set.id);
         
         await db.deleteWorkoutSet(set.id);
+      }
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Exercise removed'),
+            action: SnackBarAction(
+              label: 'Undo',
+              onPressed: () async {
+                for (final set in sets) {
+                  await db.insertWorkoutSet(
+                    WorkoutSetsCompanion.insert(
+                      uuid: set.uuid,
+                      workoutId: set.workoutId,
+                      exerciseId: set.exerciseId,
+                      exerciseName: set.exerciseName,
+                      setOrder: set.setOrder,
+                      weight: Value(set.weight),
+                      reps: Value(set.reps),
+                      durationSeconds: Value(set.durationSeconds),
+                      distanceMeters: Value(set.distanceMeters),
+                      setType: Value(set.setType),
+                      rpe: Value(set.rpe),
+                      supersetId: Value(set.supersetId),
+                      isCompleted: Value(set.isCompleted),
+                      completedAt: Value(set.completedAt),
+                    )
+                  );
+                }
+              },
+            ),
+          ),
+        );
       }
     }
   }

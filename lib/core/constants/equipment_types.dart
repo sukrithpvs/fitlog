@@ -5,6 +5,11 @@ enum EquipmentType {
   dumbbell('Dumbbell'),
   cable('Cable'),
   machine('Machine'),
+  smithMachine('Smith Machine'),
+  ezBar('EZ Bar'),
+  kettlebell('Kettlebell'),
+  resistanceBand('Resistance Band'),
+  plate('Plate'),
   bodyweight('Bodyweight'),
   none('None');
 

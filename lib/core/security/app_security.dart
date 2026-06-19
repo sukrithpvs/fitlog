@@ -2,6 +2,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'dart:io';
+import 'package:uuid/uuid.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 /// Comprehensive security measures for FitLog app
 class AppSecurity {
@@ -56,17 +58,10 @@ class AppSecurity {
            path.contains('files');
   }
 
-  /// Sanitize user input to prevent SQL injection
+  /// Drift (SQLite) automatically parameterizes queries, preventing SQL injection natively.
+  /// This method is kept for backwards compatibility but just returns the input.
   static String sanitizeInput(String input) {
-    // Remove potentially dangerous SQL characters
-    return input
-        .replaceAll(RegExp(r'''[;'"\\]'''), '')
-        .replaceAll('--', '')
-        .replaceAll('/*', '')
-        .replaceAll('*/', '')
-        .replaceAll('xp_', '')
-        .replaceAll('sp_', '')
-        .trim();
+    return input.trim();
   }
 
   /// Validate numeric input
@@ -170,11 +165,9 @@ class AppSecurity {
     Clipboard.setData(const ClipboardData(text: ''));
   }
 
-  /// Generate secure random ID (UUID alternative)
+  /// Generate secure random ID (UUIDv4)
   static String generateSecureId() {
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final random = DateTime.now().microsecond;
-    return '$timestamp-$random';
+    return const Uuid().v4();
   }
 
   /// Validate exercise ID to prevent injection
@@ -210,16 +203,15 @@ class AppSecurity {
     return true;
   }
 
-  /// Encrypt sensitive data (placeholder - use flutter_secure_storage in production)
-  static String encrypt(String data) {
-    // In production, use proper encryption
-    // For now, just base64 encode
-    return data;
+  static const _storage = FlutterSecureStorage();
+
+  /// Securely save sensitive data
+  static Future<void> saveSecureData(String key, String data) async {
+    await _storage.write(key: key, value: data);
   }
 
-  /// Decrypt sensitive data
-  static String decrypt(String data) {
-    // In production, use proper decryption
-    return data;
+  /// Securely read sensitive data
+  static Future<String?> readSecureData(String key) async {
+    return await _storage.read(key: key);
   }
 }

@@ -19,6 +19,7 @@ class Exercises extends Table {
   BoolColumn get isCustom => boolean().withDefault(const Constant(false))();
   TextColumn get notes => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  BoolColumn get isDeleted => boolean().withDefault(const Constant(false))();
 }
 
 class Workouts extends Table {
@@ -32,6 +33,7 @@ class Workouts extends Table {
   TextColumn get notes => text().nullable()();
   IntColumn get intensityRating => integer().nullable()(); // 1-5 stars
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  BoolColumn get isDeleted => boolean().withDefault(const Constant(false))();
 }
 
 class WorkoutSets extends Table {
@@ -51,6 +53,7 @@ class WorkoutSets extends Table {
   DateTimeColumn get completedAt => dateTime().nullable()();
   TextColumn get supersetId => text().nullable()();
   BoolColumn get isPersonalRecord => boolean().withDefault(const Constant(false))();
+  IntColumn get exerciseSequenceIndex => integer().nullable()();
 }
 
 class RoutineFolders extends Table {
@@ -58,6 +61,7 @@ class RoutineFolders extends Table {
   TextColumn get uuid => text()();
   TextColumn get name => text()();
   IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+  BoolColumn get isDeleted => boolean().withDefault(const Constant(false))();
 }
 
 class BodyMetrics extends Table {
@@ -93,7 +97,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration {
@@ -116,18 +120,24 @@ class AppDatabase extends _$AppDatabase {
         if (from < 4) {
           await m.addColumn(workoutSets, workoutSets.isPersonalRecord);
         }
+        if (from < 5) {
+          await m.addColumn(exercises, exercises.isDeleted);
+          await m.addColumn(workouts, workouts.isDeleted);
+          await m.addColumn(routineFolders, routineFolders.isDeleted);
+          await m.addColumn(workoutSets, workoutSets.exerciseSequenceIndex);
+        }
       },
     );
   }
 
   // ─── Exercise Queries ───
 
-  Future<List<Exercise>> getAllExercises() => select(exercises).get();
+  Future<List<Exercise>> getAllExercises() => (select(exercises)..where((e) => e.isDeleted.equals(false))).get();
 
-  Stream<List<Exercise>> watchAllExercises() => select(exercises).watch();
+  Stream<List<Exercise>> watchAllExercises() => (select(exercises)..where((e) => e.isDeleted.equals(false))).watch();
 
   Stream<List<Exercise>> watchExercisesByMuscle(String muscle) {
-    return (select(exercises)..where((e) => e.primaryMuscle.equals(muscle))).watch();
+    return (select(exercises)..where((e) => e.primaryMuscle.equals(muscle) & e.isDeleted.equals(false))).watch();
   }
 
   Future<Exercise> getExerciseById(int id) {
@@ -143,27 +153,27 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<int> deleteExercise(int id) {
-    return (delete(exercises)..where((e) => e.id.equals(id))).go();
+    return (update(exercises)..where((e) => e.id.equals(id))).write(const ExercisesCompanion(isDeleted: Value(true)));
   }
 
   // ─── Workout Queries ───
 
   Future<List<Workout>> getAllWorkouts({bool templatesOnly = false}) {
     return (select(workouts)
-          ..where((w) => w.isTemplate.equals(templatesOnly))
+          ..where((w) => w.isTemplate.equals(templatesOnly) & w.isDeleted.equals(false))
           ..orderBy([(w) => OrderingTerm.desc(w.startTime)]))
         .get();
   }
 
   Stream<List<Workout>> watchWorkoutHistory() {
     return (select(workouts)
-          ..where((w) => w.isTemplate.equals(false))
+          ..where((w) => w.isTemplate.equals(false) & w.isDeleted.equals(false))
           ..orderBy([(w) => OrderingTerm.desc(w.startTime)]))
         .watch();
   }
 
   Stream<List<Workout>> watchRoutines() {
-    return (select(workouts)..where((w) => w.isTemplate.equals(true))).watch();
+    return (select(workouts)..where((w) => w.isTemplate.equals(true) & w.isDeleted.equals(false))).watch();
   }
 
   Future<int> insertWorkout(WorkoutsCompanion workout) {
@@ -179,7 +189,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<int> deleteWorkout(int id) {
-    return (delete(workouts)..where((w) => w.id.equals(id))).go();
+    return (update(workouts)..where((w) => w.id.equals(id))).write(const WorkoutsCompanion(isDeleted: Value(true)));
   }
 
   // ─── WorkoutSet Queries ───
@@ -240,7 +250,10 @@ class AppDatabase extends _$AppDatabase {
   // ─── RoutineFolder Queries ───
 
   Stream<List<RoutineFolder>> watchAllFolders() {
-    return (select(routineFolders)..orderBy([(f) => OrderingTerm.asc(f.sortOrder)])).watch();
+    return (select(routineFolders)
+          ..where((f) => f.isDeleted.equals(false))
+          ..orderBy([(f) => OrderingTerm.asc(f.sortOrder)]))
+        .watch();
   }
 
   Future<int> insertFolder(RoutineFoldersCompanion folder) {
@@ -248,7 +261,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<int> deleteFolder(int id) {
-    return (delete(routineFolders)..where((f) => f.id.equals(id))).go();
+    return (update(routineFolders)..where((f) => f.id.equals(id))).write(const RoutineFoldersCompanion(isDeleted: Value(true)));
   }
 
   // ─── BodyMetric Queries ───
@@ -280,21 +293,18 @@ class AppDatabase extends _$AppDatabase {
   Future<void> clearAllData() async {
     try {
       await transaction(() async {
-        // Delete in correct order to respect foreign key constraints
-        // First delete sets (they reference workouts and exercises)
+        // WorkoutSets does not have a soft-delete flag, so we hard delete.
         await delete(workoutSets).go();
         
-        // Then delete workouts (they reference routine folders)
-        await delete(workouts).go();
+        // Soft delete workouts and folders
+        await update(workouts).write(const WorkoutsCompanion(isDeleted: Value(true)));
+        await update(routineFolders).write(const RoutineFoldersCompanion(isDeleted: Value(true)));
         
         // Delete body metrics (independent table)
         await delete(bodyMetrics).go();
         
-        // Delete routine folders (independent table)
-        await delete(routineFolders).go();
-        
-        // Delete custom exercises only (preserve built-in 96 exercises)
-        await (delete(exercises)..where((e) => e.isCustom.equals(true))).go();
+        // Soft delete custom exercises only (preserve built-in)
+        await (update(exercises)..where((e) => e.isCustom.equals(true))).write(const ExercisesCompanion(isDeleted: Value(true)));
       });
     } catch (e) {
       // Re-throw with more context
@@ -305,8 +315,8 @@ class AppDatabase extends _$AppDatabase {
   // ─── Backup: Export all data as maps ───
 
   Future<Map<String, dynamic>> exportAll() async {
+    final s = await getSettings();
     return {
-      'version': 1,
       'exportedAt': DateTime.now().toIso8601String(),
       'exercises': (await select(exercises).get()).map((e) => {
             'uuid': e.uuid,
@@ -357,9 +367,9 @@ class AppDatabase extends _$AppDatabase {
             'notes': b.notes,
           }).toList(),
       'settings': {
-        'weightUnit': (await getSettings()).weightUnit,
-        'themeMode': (await getSettings()).themeMode,
-        'defaultRestSeconds': (await getSettings()).defaultRestSeconds,
+        'weightUnit': s.weightUnit,
+        'themeMode': s.themeMode,
+        'defaultRestSeconds': s.defaultRestSeconds,
       },
     };
   }

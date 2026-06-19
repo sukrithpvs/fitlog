@@ -48,7 +48,7 @@ class _MonthlyReportScreenState extends ConsumerState<MonthlyReportScreen> {
     _totalDuration = Duration.zero;
 
     final exerciseCounts = <String, int>{};
-    final muscleCounts = <String, int>{};
+    final muscleCounts = <String, double>{};
 
     for (final workout in workouts) {
       if (workout.endTime != null) {
@@ -66,7 +66,12 @@ class _MonthlyReportScreenState extends ConsumerState<MonthlyReportScreen> {
         exerciseCounts[s.exerciseName] = (exerciseCounts[s.exerciseName] ?? 0) + 1;
         
         final ex = await db.getExerciseById(s.exerciseId);
-        muscleCounts[ex.primaryMuscle] = (muscleCounts[ex.primaryMuscle] ?? 0) + 1;
+        muscleCounts[ex.primaryMuscle] = (muscleCounts[ex.primaryMuscle] ?? 0) + 1.0;
+        
+        final secondaries = ex.secondaryMuscles.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty);
+        for (final sec in secondaries) {
+          muscleCounts[sec] = (muscleCounts[sec] ?? 0) + 0.5;
+        }
       }
     }
 
@@ -80,7 +85,7 @@ class _MonthlyReportScreenState extends ConsumerState<MonthlyReportScreen> {
       _mostTrainedMuscle = muscleCounts.entries.reduce((a, b) => a.value > b.value ? a : b).key;
       
       // Generate AI insight
-      final totalSets = muscleCounts.values.fold<int>(0, (a, b) => a + b);
+      final totalSets = muscleCounts.values.fold<double>(0.0, (a, b) => a + b);
       final musclePct = (muscleCounts[_mostTrainedMuscle]! / totalSets) * 100;
       
       if (musclePct > 50) {

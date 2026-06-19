@@ -91,7 +91,49 @@ class _ExercisePickerModalState extends ConsumerState<ExercisePickerModal> {
                 ),
               ),
 
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
+
+              // Equipment Filter Chips
+              SizedBox(
+                height: 40,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  children: [
+                    'barbell',
+                    'dumbbell',
+                    'machine',
+                    'cable',
+                    'bodyweight',
+                    'kettlebell',
+                    'band',
+                    'other'
+                  ].map((equipment) {
+                    final isSelected = ref.watch(selectedEquipmentFilterProvider) == equipment;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: FilterChip(
+                        label: Text(
+                          equipment[0].toUpperCase() + equipment.substring(1),
+                          style: theme.textTheme.labelSmall,
+                        ),
+                        selected: isSelected,
+                        onSelected: (selected) {
+                          if (selected) {
+                            ref.read(selectedEquipmentFilterProvider.notifier).setFilter(equipment);
+                          } else {
+                            ref.read(selectedEquipmentFilterProvider.notifier).clear();
+                          }
+                        },
+                        selectedColor: AppColors.accent.withValues(alpha: 0.2),
+                        checkmarkColor: AppColors.accent,
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+
+              const SizedBox(height: 8),
 
               // Exercise List
               Expanded(

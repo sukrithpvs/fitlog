@@ -8,6 +8,7 @@ import '../../../core/database/app_database.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../../shared/widgets/custom_charts.dart';
+import '../../../core/utils/one_rm_calculator.dart';
 
 // ─── Performed Exercises Provider ───
 // Only returns exercises the user has completed at least one set of.
@@ -78,10 +79,11 @@ final exerciseStatsProvider = StreamProvider.family<ExerciseStats?, int>((ref, e
         
         if (weight > maxWeight) maxWeight = weight;
         
-        // Brzycki 1RM Formula
-        double oneRm = weight * (36.0 / (37.0 - reps));
-        if (reps == 1) oneRm = weight; // exact 1RM
-        if (oneRm > max1RM) max1RM = oneRm;
+        // Calculate 1RM using OneRmCalculator
+        final oneRm = OneRmCalculator.epley(weight, reps);
+        if (oneRm != null && oneRm > max1RM) {
+          max1RM = oneRm;
+        }
       }
 
       // Update All-time PRs
