@@ -12,6 +12,7 @@ class ExerciseCardWidget extends StatelessWidget {
   final Function(WorkoutSet sourceSet) onCreateSuperset;
   final Function(List<WorkoutSet> sets) onGenerateWarmup;
   final Function(WorkoutSet templateSet) onAddSet;
+  final Function(int exerciseId, String exerciseName) onAddNote;
 
   const ExerciseCardWidget({
     Key? key,
@@ -22,6 +23,7 @@ class ExerciseCardWidget extends StatelessWidget {
     required this.onCreateSuperset,
     required this.onGenerateWarmup,
     required this.onAddSet,
+    required this.onAddNote,
   }) : super(key: key);
 
   @override
@@ -55,6 +57,10 @@ class ExerciseCardWidget extends StatelessWidget {
                       child: Text('Generate Warm-ups'),
                     ),
                     const PopupMenuItem(
+                      value: 'note',
+                      child: Text('Add/Edit Note'),
+                    ),
+                    const PopupMenuItem(
                       value: 'delete',
                       child: Text('Remove Exercise', style: TextStyle(color: Colors.red)),
                     ),
@@ -66,6 +72,8 @@ class ExerciseCardWidget extends StatelessWidget {
                       onCreateSuperset(sets.first);
                     } else if (value == 'warmup') {
                       onGenerateWarmup(sets);
+                    } else if (value == 'note') {
+                      onAddNote(sets.first.exerciseId, exerciseName);
                     }
                   },
                 ),
@@ -92,6 +100,7 @@ class SupersetCardWidget extends StatelessWidget {
   final Function(String supersetId) onAddExerciseToSuperset;
   final Function(List<WorkoutSet> sets) onUnlinkSuperset;
   final Function(WorkoutSet templateSet) onAddSet;
+  final Function(int exerciseId, String exerciseName) onAddNote;
 
   const SupersetCardWidget({
     Key? key,
@@ -102,6 +111,7 @@ class SupersetCardWidget extends StatelessWidget {
     required this.onAddExerciseToSuperset,
     required this.onUnlinkSuperset,
     required this.onAddSet,
+    required this.onAddNote,
   }) : super(key: key);
 
   @override
@@ -179,6 +189,11 @@ class SupersetCardWidget extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       Expanded(child: Text(exName, style: theme.textTheme.titleSmall)),
+                      IconButton(
+                        icon: const Icon(Icons.note_add_outlined, size: 20),
+                        tooltip: 'Add Note',
+                        onPressed: () => onAddNote(exSets.first.exerciseId, exName),
+                      ),
                       IconButton(
                         icon: const Icon(Icons.add_circle_outline, size: 20),
                         onPressed: () => onAddSet(exSets.first),

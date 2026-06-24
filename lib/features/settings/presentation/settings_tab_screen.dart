@@ -10,6 +10,14 @@ import '../../routines/utils/routine_share.dart';
 import '../utils/csv_export.dart';
 import '../utils/data_import.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import '../../tools/presentation/one_rm_calculator_screen.dart';
+import 'achievements_screen.dart';
+
+final versionProvider = FutureProvider<String>((ref) async {
+  final info = await PackageInfo.fromPlatform();
+  return '${info.version}+${info.buildNumber}';
+});
 
 class SettingsTabScreen extends ConsumerWidget {
   const SettingsTabScreen({super.key});
@@ -92,6 +100,23 @@ class SettingsTabScreen extends ConsumerWidget {
 
           const Divider(),
 
+          // Tools
+          _SectionHeader(title: 'TOOLS'),
+          ListTile(
+            leading: const Icon(Icons.calculate),
+            title: const Text('1RM Calculator'),
+            subtitle: const Text('Estimate your One Rep Max'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const OneRmCalculatorScreen()),
+              );
+            },
+          ),
+
+          const Divider(),
+
           // Data Management
           _SectionHeader(title: 'DATA'),
           ListTile(
@@ -127,12 +152,34 @@ class SettingsTabScreen extends ConsumerWidget {
 
           const Divider(),
 
+          // Achievements
+          _SectionHeader(title: 'ACHIEVEMENTS'),
+          ListTile(
+            leading: const Icon(Icons.emoji_events, color: AppColors.warning),
+            title: const Text('Trophy Case'),
+            subtitle: const Text('View your badges and milestones'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const AchievementsScreen()),
+              );
+            },
+          ),
+
+          const Divider(),
+
           // About Section
           _SectionHeader(title: 'ABOUT'),
-          ListTile(
-            leading: const Icon(Icons.info_outline),
-            title: const Text('Version'),
-            subtitle: const Text('0.1.0+1'),
+          Consumer(
+            builder: (context, ref, child) {
+              final versionAsync = ref.watch(versionProvider);
+              return ListTile(
+                leading: const Icon(Icons.info_outline),
+                title: const Text('Version'),
+                subtitle: Text(versionAsync.value ?? 'Loading...'),
+              );
+            },
           ),
           ListTile(
             leading: const Icon(Icons.code),

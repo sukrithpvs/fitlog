@@ -284,6 +284,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
                                   onAddExerciseToSuperset: _addExerciseToSuperset,
                                   onUnlinkSuperset: _unlinkSuperset,
                                   onAddSet: _addSet,
+                                  onAddNote: _showAddNoteDialog,
                                 )
                               : ExerciseCardWidget(
                                   exerciseName: groupSets.first.exerciseName,
@@ -293,6 +294,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
                                   onCreateSuperset: _createSupersetFromCard,
                                   onGenerateWarmup: _generateWarmupSets,
                                   onAddSet: _addSet,
+                                  onAddNote: _showAddNoteDialog,
                                 );
                         },
                       ),
@@ -361,32 +363,35 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
 
   Widget _buildSetRow(BuildContext context, WorkoutSet set, int setNumber) {
     final trackingType = _trackingTypeCache[set.exerciseId] ?? 'weight_reps';
+    
+    // Trigger loading if not in cache
+    final cacheKey = '${set.exerciseId}_${setNumber - 1}';
+    if (!_previousPerformanceCache.containsKey(cacheKey)) {
+      _loadPreviousPerformance(set.exerciseId, setNumber - 1);
+    }
+    
+    final prevPerf = _previousPerformanceCache[cacheKey] ?? '—';
 
-    return FutureBuilder<String>(
-      future: _getPreviousPerformance(set.exerciseId, set.setOrder),
-      builder: (context, snapshot) {
-        return Dismissible(
-          key: ValueKey(set.id),
-          direction: DismissDirection.endToStart,
-          background: Container(
-            color: Colors.red,
-            alignment: Alignment.centerRight,
-            padding: const EdgeInsets.only(right: 16),
-            child: const Icon(Icons.delete, color: Colors.white),
-          ),
-          onDismissed: (_) => _deleteSetWithUndo(set),
-          child: SetRowWidget(
-            set: set,
-            setNumber: setNumber,
-            trackingType: trackingType,
-            previousPerformance: snapshot.data ?? '—',
-            onUpdateSet: _updateSet,
-            onToggleComplete: _toggleSetComplete,
-            cycleSetType: () => _cycleSetType(set),
-            showRpeDialog: () => _showRpeDialog(set),
-          ),
-        );
-      },
+    return Dismissible(
+      key: ValueKey(set.id),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        color: Colors.red,
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 16),
+        child: const Icon(Icons.delete, color: Colors.white),
+      ),
+      onDismissed: (_) => _deleteSetWithUndo(set),
+      child: SetRowWidget(
+        set: set,
+        setNumber: setNumber,
+        trackingType: trackingType,
+        previousPerformance: prevPerf,
+        onUpdateSet: _updateSet,
+        onToggleComplete: _toggleSetComplete,
+        cycleSetType: () => _cycleSetType(set),
+        showRpeDialog: () => _showRpeDialog(set),
+      ),
     );
   }
 
@@ -847,24 +852,69 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
     );
   }
 
-  Future<String> _getPreviousPerformance(int exerciseId, int setOrder) async {
-    final cacheKey = '${exerciseId}_$setOrder';
-    if (_previousPerformanceCache.containsKey(cacheKey)) {
-      return _previousPerformanceCache[cacheKey]!;
-    }
+  Future<void> _loadPreviousPerformance(int exerciseId, int setIndex) async {
+    final cacheKey = '${exerciseId}_$setIndex';
+    // Mark as loading to avoid concurrent duplicate loads
+    _previousPerformanceCache[cacheKey] = '—';
+    
     try {
       final db = ref.read(databaseProvider);
-      final prevSet = await db.getPreviousSetPerformance(exerciseId, setOrder);
+      final prevSet = await db.getPreviousSetPerformance(exerciseId, setIndex);
       if (prevSet != null && prevSet.workoutId != _workoutId) {
-        final result = '${prevSet.weight!.toStringAsFixed(0)}kg × ${prevSet.reps}';
-        _previousPerformanceCache[cacheKey] = result;
-        return result;
+        String result = '${prevSet.weight!.toStringAsFixed(0)}kg × ${prevSet.reps}';
+        if (prevSet.rpe != null) {
+          result += ' @RPE ${prevSet.rpe}';
+        }
+        if (mounted) {
+          setState(() {
+            _previousPerformanceCache[cacheKey] = result;
+          });
+        }
       }
     } catch (e) {
       // Ignore errors
     }
-    _previousPerformanceCache[cacheKey] = '—';
-    return '—';
+  }
+
+  Future<void> _showAddNoteDialog(int exerciseId, String exerciseName) async {
+    final db = ref.read(databaseProvider);
+    final existingNote = await db.getExerciseNoteForWorkout(_workoutId, exerciseId);
+    
+    final controller = TextEditingController(text: existingNote ?? '');
+    
+    if (!mounted) return;
+    
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Note for $exerciseName'),
+        content: TextField(
+          controller: controller,
+          maxLines: 4,
+          decoration: const InputDecoration(
+            hintText: 'Add a note for this exercise...',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null) {
+      await db.saveExerciseNoteForWorkout(_workoutId, exerciseId, result);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Note saved')));
+      }
+    }
   }
 
   Future<void> _deleteExercise(List<WorkoutSet> sets) async {

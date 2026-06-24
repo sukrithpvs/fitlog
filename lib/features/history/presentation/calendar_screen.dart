@@ -32,6 +32,24 @@ final workoutsByDateProvider = StreamProvider<Map<DateTime, List<Workout>>>((ref
   }
 });
 
+// Provider for scheduled workouts by date
+final scheduledWorkoutsByDateProvider = StreamProvider<Map<DateTime, List<ScheduledWorkout>>>((ref) async* {
+  final db = ref.watch(databaseProvider);
+  final scheduledStream = db.select(db.scheduledWorkouts).watch();
+
+  await for (final scheduled in scheduledStream) {
+    final map = <DateTime, List<ScheduledWorkout>>{};
+    for (final s in scheduled) {
+      final date = DateTime(
+        s.scheduledDate.year,
+        s.scheduledDate.month,
+        s.scheduledDate.day,
+      );
+      map.putIfAbsent(date, () => []).add(s);
+    }
+    yield map;
+  }
+});
 class MonthlyStats {
   final int activeDays;
   final int restDays;
@@ -92,6 +110,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final workoutsAsync = ref.watch(workoutsByDateProvider);
+    final scheduledAsync = ref.watch(scheduledWorkoutsByDateProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -225,9 +244,13 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
 
               const SizedBox(height: 16),
 
-              // Selected day's workouts
               Expanded(
-                child: _buildWorkoutList(workoutsByDate, theme, isDark),
+                child: _buildWorkoutList(
+                  workoutsByDate, 
+                  scheduledAsync.value ?? {}, 
+                  theme, 
+                  isDark
+                ),
               ),
             ],
           );
@@ -249,6 +272,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
 
   Widget _buildWorkoutList(
     Map<DateTime, List<Workout>> workoutsByDate,
+    Map<DateTime, List<ScheduledWorkout>> scheduledByDate,
     ThemeData theme,
     bool isDark,
   ) {
@@ -262,8 +286,13 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       _selectedDay!.day,
     );
     final workouts = workoutsByDate[normalizedDay] ?? [];
+    final scheduledWorkouts = scheduledByDate[normalizedDay] ?? [];
 
-    if (workouts.isEmpty) {
+    if (workouts.isEmpty && scheduledWorkouts.isEmpty) {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final isFuture = normalizedDay.isAfter(today) || normalizedDay.isAtSameMomentAs(today);
+
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -283,6 +312,19 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
               DateFormatter.fullDate(_selectedDay!),
               style: theme.textTheme.bodySmall,
             ),
+            if (isFuture) ...[
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                icon: const Icon(Icons.add),
+                label: const Text('Schedule Workout'),
+                onPressed: () {
+                  // TODO: Implement schedule dialog
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Schedule feature coming soon')),
+                  );
+                },
+              ),
+            ]
           ],
         ),
       );
@@ -303,16 +345,73 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         ),
         const SizedBox(height: 12),
         Expanded(
-          child: ListView.builder(
+          child: ListView(
             padding: const EdgeInsets.only(bottom: 16),
-            itemCount: workouts.length,
-            itemBuilder: (context, index) {
-              final workout = workouts[index];
-              return _buildWorkoutCard(workout, theme, isDark);
-            },
+            children: [
+              ...workouts.map((workout) => _buildWorkoutCard(workout, theme, isDark)),
+              ...scheduledWorkouts.map((scheduled) => _buildScheduledCard(scheduled, theme, isDark)),
+            ],
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildScheduledCard(ScheduledWorkout scheduled, ThemeData theme, bool isDark) {
+    return FutureBuilder<Workout?>(
+      future: (ref.read(databaseProvider).select(ref.read(databaseProvider).workouts)
+            ..where((w) => w.id.equals(scheduled.routineId)))
+          .getSingleOrNull(),
+      builder: (context, snapshot) {
+        final template = snapshot.data;
+        if (template == null) return const SizedBox.shrink();
+
+        return Card(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          shape: RoundedRectangleBorder(
+            side: BorderSide(color: AppColors.accent.withValues(alpha: 0.5), width: 1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.accent.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.event_note, color: AppColors.accent),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        template.title,
+                        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Scheduled',
+                        style: theme.textTheme.bodySmall?.copyWith(color: AppColors.accent),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 20),
+                  onPressed: () {
+                    // TODO: cancel scheduled workout
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 

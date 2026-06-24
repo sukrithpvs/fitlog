@@ -15,6 +15,8 @@ import 'muscle_progress_screen.dart';
 import 'exercise_progress_screen.dart';
 import 'monthly_report_screen.dart';
 import 'widgets/muscle_recovery_card.dart';
+import 'widgets/weekly_targets_widget.dart';
+import 'widgets/progressive_overload_widget.dart';
 import '../utils/streak_calculator.dart';
 
 // ─── Stats Provider (Overview) ───
@@ -32,8 +34,7 @@ final workoutStatsProvider = StreamProvider<Map<String, dynamic>>((ref) {
     final thisWeek = workouts.where((w) => w.startTime.isAfter(thisWeekStart)).length;
     final thisMonth = workouts.where((w) => w.startTime.isAfter(thisMonthStart)).length;
 
-    final allSets = await db.select(db.workoutSets).get();
-    final completedSets = allSets.where((s) => s.isCompleted).toList();
+    final completedSets = await (db.select(db.workoutSets)..where((s) => s.isCompleted.equals(true))).get();
     final totalVolume = completedSets
         .where((s) => s.weight != null && s.reps != null)
         .fold<double>(0, (sum, s) => sum + (s.weight! * s.reps!));
@@ -398,6 +399,10 @@ class _AnalyticsTabScreenState extends ConsumerState<AnalyticsTabScreen> {
               error: (err, _) => Center(child: Text('Error: $err')),
             ),
 
+            const SizedBox(height: 16),
+            const ProgressiveOverloadWidget(),
+            const SizedBox(height: 16),
+            const WeeklyTargetsWidget(),
             const SizedBox(height: 28),
 
             // Volume Progress Header
@@ -660,52 +665,4 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-// ─── Segmented Toggle Button ───
-class _ToggleButton extends StatelessWidget {
-  final String title;
-  final bool isSelected;
-  final VoidCallback onTap;
 
-  const _ToggleButton({
-    required this.title,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected 
-              ? (isDark ? AppColors.darkSurface : AppColors.lightSurface)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  )
-                ]
-              : [],
-        ),
-        child: Text(
-          title,
-          textAlign: TextAlign.center,
-          style: theme.textTheme.labelMedium?.copyWith(
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            color: isSelected ? theme.colorScheme.onSurface : theme.colorScheme.outline,
-          ),
-        ),
-      ),
-    );
-  }
-}

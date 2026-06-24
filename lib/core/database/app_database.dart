@@ -83,6 +83,33 @@ class UserSettings extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+class WeeklyTargets extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get muscleGroup => text()();
+  IntColumn get targetSets => integer()();
+}
+
+class ScheduledWorkouts extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get uuid => text()();
+  IntColumn get routineId => integer().references(Workouts, #id)();
+  DateTimeColumn get scheduledDate => dateTime()();
+  BoolColumn get isCompleted => boolean().withDefault(const Constant(false))();
+}
+
+class UserBadges extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get badgeType => text()();
+  DateTimeColumn get earnedAt => dateTime().withDefault(currentDateAndTime)();
+}
+
+class WorkoutExerciseNotes extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get workoutId => integer().references(Workouts, #id)();
+  IntColumn get exerciseId => integer().references(Exercises, #id)();
+  TextColumn get notes => text()();
+}
+
 // ─── Database Class ───
 
 @DriftDatabase(tables: [
@@ -92,12 +119,16 @@ class UserSettings extends Table {
   RoutineFolders,
   BodyMetrics,
   UserSettings,
+  WeeklyTargets,
+  ScheduledWorkouts,
+  UserBadges,
+  WorkoutExerciseNotes,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration {
@@ -125,6 +156,14 @@ class AppDatabase extends _$AppDatabase {
           await m.addColumn(workouts, workouts.isDeleted);
           await m.addColumn(routineFolders, routineFolders.isDeleted);
           await m.addColumn(workoutSets, workoutSets.exerciseSequenceIndex);
+        }
+        if (from < 6) {
+          await m.createTable(weeklyTargets);
+          await m.createTable(scheduledWorkouts);
+          await m.createTable(userBadges);
+        }
+        if (from < 7) {
+          await m.createTable(workoutExerciseNotes);
         }
       },
     );
@@ -215,18 +254,28 @@ class AppDatabase extends _$AppDatabase {
         .get();
   }
 
-  Future<WorkoutSet?> getPreviousSetPerformance(int exerciseId, int setOrder) async {
-    final query = select(workoutSets)
-      ..where((s) =>
-          s.exerciseId.equals(exerciseId) &
-          s.setOrder.equals(setOrder) &
-          s.isCompleted.equals(true) &
-          s.weight.isNotNull() &
-          s.reps.isNotNull())
-      ..orderBy([(s) => OrderingTerm.desc(s.completedAt)])
-      ..limit(1);
+  Future<WorkoutSet?> getPreviousSetPerformance(int exerciseId, int setIndex) async {
+    // 1. Find the most recent workout where this exercise was performed
+    final recentWorkoutSet = await (select(workoutSets)
+          ..where((s) => s.exerciseId.equals(exerciseId) & s.isCompleted.equals(true))
+          ..orderBy([(s) => OrderingTerm.desc(s.completedAt)])
+          ..limit(1))
+        .getSingleOrNull();
+        
+    if (recentWorkoutSet == null) return null;
     
-    return await query.getSingleOrNull();
+    // 2. Get all sets for that exercise in that workout, ordered by setOrder
+    final sets = await (select(workoutSets)
+          ..where((s) => s.workoutId.equals(recentWorkoutSet.workoutId) & 
+                         s.exerciseId.equals(exerciseId) & 
+                         s.isCompleted.equals(true))
+          ..orderBy([(s) => OrderingTerm.asc(s.setOrder)]))
+        .get();
+        
+    if (setIndex < sets.length) {
+      return sets[setIndex];
+    }
+    return null;
   }
 
   Future<int> insertWorkoutSet(WorkoutSetsCompanion set_) {
@@ -317,6 +366,7 @@ class AppDatabase extends _$AppDatabase {
   Future<Map<String, dynamic>> exportAll() async {
     final s = await getSettings();
     return {
+      'version': 1,
       'exportedAt': DateTime.now().toIso8601String(),
       'exercises': (await select(exercises).get()).map((e) => {
             'uuid': e.uuid,
@@ -372,5 +422,37 @@ class AppDatabase extends _$AppDatabase {
         'defaultRestSeconds': s.defaultRestSeconds,
       },
     };
+  }
+
+  // ─── Workout Exercise Notes ───
+
+  Future<String?> getExerciseNoteForWorkout(int workoutId, int exerciseId) async {
+    final noteRow = await (select(workoutExerciseNotes)
+          ..where((n) => n.workoutId.equals(workoutId) & n.exerciseId.equals(exerciseId)))
+        .getSingleOrNull();
+    return noteRow?.notes;
+  }
+
+  Future<void> saveExerciseNoteForWorkout(int workoutId, int exerciseId, String notes) async {
+    final existing = await (select(workoutExerciseNotes)
+          ..where((n) => n.workoutId.equals(workoutId) & n.exerciseId.equals(exerciseId)))
+        .getSingleOrNull();
+
+    if (existing != null) {
+      if (notes.trim().isEmpty) {
+        await (delete(workoutExerciseNotes)..where((n) => n.id.equals(existing.id))).go();
+      } else {
+        await (update(workoutExerciseNotes)..where((n) => n.id.equals(existing.id)))
+            .write(WorkoutExerciseNotesCompanion(notes: Value(notes)));
+      }
+    } else if (notes.trim().isNotEmpty) {
+      await into(workoutExerciseNotes).insert(
+        WorkoutExerciseNotesCompanion.insert(
+          workoutId: workoutId,
+          exerciseId: exerciseId,
+          notes: notes,
+        ),
+      );
+    }
   }
 }

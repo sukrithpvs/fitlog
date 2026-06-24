@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/database/database_provider.dart';
+import '../../../core/utils/date_formatter.dart';
+import '../utils/coach_insight_generator.dart';
 import '../../../core/theme/app_colors.dart';
 
 class MonthlyReportScreen extends ConsumerStatefulWidget {
@@ -48,6 +50,7 @@ class _MonthlyReportScreenState extends ConsumerState<MonthlyReportScreen> {
     _totalDuration = Duration.zero;
 
     final exerciseCounts = <String, int>{};
+    final exerciseIdCounts = <int, int>{};
     final muscleCounts = <String, double>{};
 
     for (final workout in workouts) {
@@ -64,6 +67,7 @@ class _MonthlyReportScreenState extends ConsumerState<MonthlyReportScreen> {
         }
         
         exerciseCounts[s.exerciseName] = (exerciseCounts[s.exerciseName] ?? 0) + 1;
+        exerciseIdCounts[s.exerciseId] = (exerciseIdCounts[s.exerciseId] ?? 0) + 1;
         
         final ex = await db.getExerciseById(s.exerciseId);
         muscleCounts[ex.primaryMuscle] = (muscleCounts[ex.primaryMuscle] ?? 0) + 1.0;
@@ -83,20 +87,16 @@ class _MonthlyReportScreenState extends ConsumerState<MonthlyReportScreen> {
 
     if (muscleCounts.isNotEmpty) {
       _mostTrainedMuscle = muscleCounts.entries.reduce((a, b) => a.value > b.value ? a : b).key;
-      
-      // Generate AI insight
-      final totalSets = muscleCounts.values.fold<double>(0.0, (a, b) => a + b);
-      final musclePct = (muscleCounts[_mostTrainedMuscle]! / totalSets) * 100;
-      
-      if (musclePct > 50) {
-        _aiInsight = "You're heavily focusing on $_mostTrainedMuscle (${musclePct.toStringAsFixed(0)}% of sets). Make sure you aren't neglecting other areas!";
-      } else {
-        _aiInsight = "Great balance! Your most trained muscle was $_mostTrainedMuscle, but your overall routine is well-rounded.";
-      }
     } else {
       _mostTrainedMuscle = 'None';
-      _aiInsight = 'No workouts logged this month. Let\'s get to work!';
     }
+
+    _aiInsight = await CoachInsightGenerator.generateMonthlyInsight(
+      db,
+      workouts,
+      muscleCounts,
+      exerciseIdCounts,
+    );
 
     setState(() => _isLoading = false);
   }

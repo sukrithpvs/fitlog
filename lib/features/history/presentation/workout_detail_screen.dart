@@ -313,6 +313,42 @@ class WorkoutDetailScreen extends ConsumerWidget {
           ],
           const SizedBox(height: 12),
           _buildSetsTable(context, sets),
+          
+          Consumer(builder: (context, ref, _) {
+            final db = ref.read(databaseProvider);
+            return FutureBuilder<String?>(
+              future: db.getExerciseNoteForWorkout(sets.first.workoutId, sets.first.exerciseId),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData || snapshot.data == null || snapshot.data!.isEmpty) {
+                  return const SizedBox.shrink();
+                }
+                return Container(
+                  margin: const EdgeInsets.only(top: 12),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.1)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.sticky_note_2_outlined, size: 16, color: theme.colorScheme.outline),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          snapshot.data!,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+          }),
         ],
       ),
     );
@@ -376,6 +412,43 @@ class WorkoutDetailScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 8),
                 _buildSetsTable(context, exSets),
+                
+                Consumer(builder: (context, ref, _) {
+                  final db = ref.read(databaseProvider);
+                  return FutureBuilder<String?>(
+                    future: db.getExerciseNoteForWorkout(exSets.first.workoutId, exSets.first.exerciseId),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData || snapshot.data == null || snapshot.data!.isEmpty) {
+                        return const SizedBox.shrink();
+                      }
+                      return Container(
+                        margin: const EdgeInsets.only(top: 8),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.1)),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.sticky_note_2_outlined, size: 16, color: theme.colorScheme.outline),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                snapshot.data!,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  );
+                }),
+                
                 const SizedBox(height: 16),
               ],
             );

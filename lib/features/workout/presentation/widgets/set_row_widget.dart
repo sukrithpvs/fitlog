@@ -118,8 +118,48 @@ class _SetRowWidgetState extends State<SetRowWidget> {
       width: 24,
       height: 24,
       decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(4)),
-      child: Center(child: Text('\${widget.setNumber}', style: const TextStyle(fontWeight: FontWeight.bold))),
+      child: Center(child: Text('${widget.setNumber}', style: const TextStyle(fontWeight: FontWeight.bold))),
     );
+  }
+
+  double? _getSuggestedWeight() {
+    if (widget.trackingType == 'reps_only' || widget.trackingType == 'time_only' || widget.trackingType == 'distance_time') return null;
+    if (widget.set.weight != null) return null;
+    if (widget.previousPerformance == '—') return null;
+
+    final weightMatch = RegExp(r'([\d\.]+)kg').firstMatch(widget.previousPerformance);
+    final rpeMatch = RegExp(r'@RPE\s*(\d+)').firstMatch(widget.previousPerformance);
+    
+    if (weightMatch != null) {
+      final prevWeight = double.tryParse(weightMatch.group(1) ?? '');
+      if (prevWeight != null) {
+        int? prevRpe;
+        if (rpeMatch != null) {
+          prevRpe = int.tryParse(rpeMatch.group(1) ?? '');
+        }
+        
+        if (prevRpe != null) {
+          if (prevRpe == 10) return prevWeight;
+          else if (prevRpe >= 8) return prevWeight + 2.5;
+          else return prevWeight + 5.0;
+        } else {
+          return prevWeight + 2.5;
+        }
+      }
+    }
+    return null;
+  }
+
+  String? _getSuggestionLabel(double? suggestedWeight) {
+    if (suggestedWeight == null) return null;
+    final rpeMatch = RegExp(r'@RPE\s*(\d+)').firstMatch(widget.previousPerformance);
+    int? prevRpe = rpeMatch != null ? int.tryParse(rpeMatch.group(1) ?? '') : null;
+    if (prevRpe != null) {
+      if (prevRpe == 10) return 'Same';
+      else if (prevRpe >= 8) return '+2.5kg';
+      else return '+5kg';
+    }
+    return '+2.5kg';
   }
 
   Widget _buildCol1() {
@@ -138,19 +178,12 @@ class _SetRowWidgetState extends State<SetRowWidget> {
       );
     }
     
-    double? suggestedWeight;
-    if (widget.previousPerformance != '—') {
-      final match = RegExp(r'([\d\.]+)kg').firstMatch(widget.previousPerformance);
-      if (match != null) {
-        final prevWeight = double.tryParse(match.group(1) ?? '');
-        if (prevWeight != null) {
-          suggestedWeight = prevWeight + 2.5;
-        }
-      }
-    }
+    final suggestedWeight = _getSuggestedWeight();
+    final suggestionLabel = _getSuggestionLabel(suggestedWeight);
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
+    return Stack(
+      clipBehavior: Clip.none,
+      alignment: Alignment.center,
       children: [
         TextField(
           controller: _weightController,
@@ -159,9 +192,9 @@ class _SetRowWidgetState extends State<SetRowWidget> {
           style: theme.textTheme.bodyMedium, textAlign: TextAlign.center,
           onChanged: (v) => widget.onUpdateSet(widget.set.id, weight: double.tryParse(v)),
         ),
-        if (widget.set.weight == null && suggestedWeight != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
+        if (suggestedWeight != null)
+          Positioned(
+            bottom: -22,
             child: GestureDetector(
               onTap: () {
                 _weightController.text = suggestedWeight!.toStringAsFixed(1).replaceAll('.0', '');
@@ -173,7 +206,7 @@ class _SetRowWidgetState extends State<SetRowWidget> {
                   color: AppColors.accent.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: Text('+2.5kg', style: TextStyle(fontSize: 10, color: AppColors.accent, fontWeight: FontWeight.bold)),
+                child: Text(suggestionLabel ?? '+2.5kg', style: const TextStyle(fontSize: 10, color: AppColors.accent, fontWeight: FontWeight.bold)),
               ),
             ),
           ),
@@ -217,8 +250,10 @@ class _SetRowWidgetState extends State<SetRowWidget> {
     final set = widget.set;
     final theme = Theme.of(context);
     
+    final bool hasSuggestion = _getSuggestedWeight() != null;
+    
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
+      padding: EdgeInsets.only(bottom: hasSuggestion ? 26.0 : 8.0),
       child: Container(
         color: set.isCompleted ? AppColors.success.withValues(alpha: 0.1) : Colors.transparent,
         child: Row(

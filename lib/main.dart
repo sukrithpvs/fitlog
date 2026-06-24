@@ -18,10 +18,10 @@ void main() async {
 
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
-    debugPrint('Global Error: \${details.exception}');
+    debugPrint('Global Error: ${details.exception}');
   };
   PlatformDispatcher.instance.onError = (error, stack) {
-    debugPrint('Async Global Error: \$error');
+    debugPrint('Async Global Error: $error');
     return true;
   };
 

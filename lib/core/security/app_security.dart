@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'dart:io';
 import 'package:uuid/uuid.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
 
 /// Comprehensive security measures for FitLog app
 class AppSecurity {
@@ -203,15 +203,5 @@ class AppSecurity {
     return true;
   }
 
-  static const _storage = FlutterSecureStorage();
 
-  /// Securely save sensitive data
-  static Future<void> saveSecureData(String key, String data) async {
-    await _storage.write(key: key, value: data);
-  }
-
-  /// Securely read sensitive data
-  static Future<String?> readSecureData(String key) async {
-    return await _storage.read(key: key);
-  }
 }

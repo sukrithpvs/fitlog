@@ -1,7 +1,7 @@
 name: fitlog
 description: "FitLog - Premium offline-first fitness tracker"
 publish_to: 'none'
-version: 0.2.0+1
+version: 2.0.0+2
 
 environment:
   sdk: ^3.12.2
@@ -33,10 +33,7 @@ dependencies:
   uuid: ^4.5.1
   intl: ^0.20.1
 
-  # Security
-  flutter_secure_storage: ^9.0.0
-  crypto: ^3.0.3
-  device_info_plus: ^10.1.0
+  package_info_plus: ^8.0.0
 
   # File Sharing
   share_plus: ^10.1.3
